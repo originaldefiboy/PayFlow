@@ -11,7 +11,7 @@ vi.mock("@stellar/stellar-sdk/rpc", () => {
 });
 
 // Import the implementation AFTER the mock block is securely established
-import { fetchEvents, server } from "../stellar";
+import { fetchEvents, getChargeHistory, server } from "../stellar";
 
 const getEventsMock = server.getEvents as ReturnType<typeof vi.fn>;
 
@@ -79,6 +79,102 @@ describe("fetchEvents", () => {
     const result = await fetchEvents("subscribed");
 
     // The function's internal catch block should swallow the exception and output [] safely
+    expect(result).toEqual([]);
+  });
+});
+
+describe("getChargeHistory", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns correctly parsed ChargeEvent array", async () => {
+    getEventsMock.mockResolvedValue({
+      events: [
+        {
+          topic: ["charged", "user_A"],
+          value: {
+            _value: {
+              merchant: "merchant_A",
+              amount: 4500,
+              charged_at: 1700000000,
+            },
+          },
+          ledger: 200,
+          ledgerCloseTime: 1700000000,
+          txHash: "txhash_charged_1",
+        },
+        {
+          topic: ["charged", "user_B"],
+          value: {
+            _value: {
+              merchant: "merchant_B",
+              amount: 1200,
+              charged_at: 1700000001,
+            },
+          },
+          ledger: 201,
+          ledgerCloseTime: 1700000001,
+          txHash: "txhash_charged_2",
+        },
+      ],
+    });
+
+    const result = await getChargeHistory("user_A");
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      date: new Date(1700000000 * 1000),
+      amount: "4500",
+      txHash: "txhash_charged_1",
+      merchant: "merchant_A",
+    });
+  });
+
+  it("sorts newest first", async () => {
+    getEventsMock.mockResolvedValue({
+      events: [
+        {
+          topic: ["charged", "user_A"],
+          value: {
+            _value: {
+              merchant: "merchant_A",
+              amount: 2500,
+              charged_at: 1700000000,
+            },
+          },
+          ledger: 300,
+          ledgerCloseTime: 1700000000,
+          txHash: "txhash_charged_older",
+        },
+        {
+          topic: ["charged", "user_A"],
+          value: {
+            _value: {
+              merchant: "merchant_A",
+              amount: 2600,
+              charged_at: 1700000100,
+            },
+          },
+          ledger: 301,
+          ledgerCloseTime: 1700000100,
+          txHash: "txhash_charged_newer",
+        },
+      ],
+    });
+
+    const result = await getChargeHistory("user_A");
+
+    expect(result).toHaveLength(2);
+    expect(result[0].txHash).toBe("txhash_charged_newer");
+    expect(result[1].txHash).toBe("txhash_charged_older");
+  });
+
+  it("returns empty array on error", async () => {
+    getEventsMock.mockRejectedValue(new Error("Stellar RPC failure"));
+
+    const result = await getChargeHistory("user_A");
+
     expect(result).toEqual([]);
   });
 });
