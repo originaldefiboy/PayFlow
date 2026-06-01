@@ -1016,3 +1016,37 @@ fn test_subscribe_overwrites_cancelled_subscription() {
     assert!(sub_new.active);
     assert_eq!(sub_new.amount, 2_0000000);
 }
+
+// ─────────────────────────────────────────────────────────────
+// Issue #240: reset_merchant_revenue (admin only) tests
+// ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_reset_merchant_revenue() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    // Setup: set admin
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    // Subscribe and charge to accumulate revenue
+    let amount: i128 = 5_0000000;
+    let interval: u64 = 30 * 24 * 60 * 60;
+    client.subscribe(&user, &merchant, &amount, &interval, &token_addr, &None, &None);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + 1;
+    });
+    client.charge(&user);
+
+    // Verify revenue accumulated
+    assert_eq!(client.get_merchant_revenue(&merchant), amount);
+
+    // Reset revenue
+    client.reset_merchant_revenue(&merchant);
+
+    // Verify revenue is zero
+    assert_eq!(client.get_merchant_revenue(&merchant), 0);
+}
