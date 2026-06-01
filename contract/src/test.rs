@@ -369,6 +369,16 @@ fn test_pay_per_use_zero_amount() {
     client.pay_per_use(&user, &0);
 }
 
+#[test]
+#[should_panic(expected = "Amount exceeds maximum cap")]
+fn test_pay_per_use_exceeds_cap() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+    client.pay_per_use(&user, &(MAX_AMOUNT + 1));
+}
+
 /// initialize() still works for backward compat but is not required.
 #[test]
 fn test_initialize_backward_compat() {
@@ -1194,6 +1204,8 @@ fn test_custom_sac_token_end_to_end_flow() {
     // Verify subscription is still active after pay_per_use
     let sub_final = client.get_subscription(&user).unwrap();
     assert!(sub_final.active, "subscription should remain active after pay_per_use");
+}
+
 // ─────────────────────────────────────────────────────────────
 // Issue #237: get_token() read function tests
 // ─────────────────────────────────────────────────────────────

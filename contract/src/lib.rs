@@ -74,6 +74,7 @@ pub enum DataKey {
 // ─────────────────────────────────────────────────────────────
 
 pub const SUBSCRIPTION_TTL_LEDGERS: u32 = 6307200; // ~1 year (assuming 5s blocks)
+pub const MAX_AMOUNT: i128 = 100_000_000_000;
 
 // ─────────────────────────────────────────────────────────────
 // Data types
@@ -310,6 +311,9 @@ impl FlowPay {
         user.require_auth();
 
         assert!(amount > 0, "amount must be positive");
+        if amount > MAX_AMOUNT {
+            panic!("Amount exceeds maximum cap");
+        }
 
         let key = DataKey::Subscription(user.clone());
 
