@@ -65,6 +65,8 @@ pub enum DataKey {
     ChargeHistory(Address),
     // Feature: emergency contract pause
     ContractPaused,
+    // Pending admin for two-step transfer
+    PendingAdmin,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -468,25 +470,24 @@ impl FlowPay {
         events::publish_contract_unpaused(&env);
     }
 
-    /// Transfers admin rights to a new address.
-    ///
-    /// # Parameters
-    ///
-    /// - `new_admin`: The address that will become the new admin.
-    ///
-    /// # Returns
-    ///
-    /// Returns nothing.
+    /// Proposes a new admin (step 1 of two-step transfer).
+    /// The proposed address must call `accept_admin()` to complete the transfer.
     ///
     /// # Auth
     ///
     /// Requires authorization from the current admin.
-    ///
-    /// # Side Effects
-    ///
-    /// Updates the admin address in storage and emits `admin_transferred` event.
     pub fn transfer_admin(env: Env, new_admin: Address) {
         admin::transfer_admin(&env, &new_admin);
+    }
+
+    /// Accepts a pending admin transfer (step 2 of two-step transfer).
+    /// Emits `admin_transferred` and replaces the active admin.
+    ///
+    /// # Auth
+    ///
+    /// Requires authorization from the pending (new) admin.
+    pub fn accept_admin(env: Env) {
+        admin::accept_admin(&env);
     }
 
     /// Returns whether the contract is currently paused.
