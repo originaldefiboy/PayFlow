@@ -33,3 +33,11 @@ pub fn record_charge(env: &Env, user: &Address, timestamp: u64) {
         .persistent()
         .set(&DataKey::ChargeHistory(user.clone()), &history);
 }
+
+/// Clears the stored charge history for a subscriber.
+pub fn clear_charge_history(env: &Env, user: &Address) {
+    env.storage()
+        .persistent()
+        .remove(&DataKey::ChargeHistory(user.clone()));
+}
+

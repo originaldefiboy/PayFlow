@@ -696,6 +696,12 @@ impl FlowPay {
     pub fn get_charge_history(env: Env, user: Address) -> Vec<u64> {
         subscription_history::get_charge_history(&env, &user)
     }
+
+    /// Clears the charge history for a subscriber.
+    pub fn clear_charge_history(env: Env, user: Address) {
+        user.require_auth();
+        subscription_history::clear_charge_history(&env, &user);
+    }
 }
 
 fn extend_subscription_ttl(env: &Env, user: &Address) {
