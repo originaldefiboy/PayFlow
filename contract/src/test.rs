@@ -1016,3 +1016,82 @@ fn test_subscribe_overwrites_cancelled_subscription() {
     assert!(sub_new.active);
     assert_eq!(sub_new.amount, 2_0000000);
 }
+
+// ─────────────────────────────────────────────
+// Issue #231: token.rs SAC compatibility test
+// ─────────────────────────────────────────────
+
+/// Test that a custom SAC token (not native XLM) works end-to-end
+/// with subscribe, charge, and pay_per_use operations.
+#[test]
+fn test_custom_sac_token_end_to_end_flow() {
+    let (env, contract_id, _token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    // Setup a custom SAC token (not the default one from setup())
+    let custom_token = setup_second_token(&env, &contract_id, &user);
+    let token = TokenClient::new(&env, &custom_token);
+
+    let amount: i128 = 5_0000000;
+    let interval: u64 = 86400;
+
+    // Step 1: Subscribe with custom SAC token
+    client.subscribe(&user, &merchant, &amount, &interval, &custom_token, &None, &None);
+
+    // Verify subscription uses the custom token
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(sub.active);
+    assert_eq!(sub.amount, amount);
+    assert_eq!(sub.token, custom_token, "subscription should use custom SAC token");
+
+    // Step 2: Charge after interval
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + 1;
+    });
+
+    let user_balance_before = token.balance(&user);
+    let merchant_balance_before = token.balance(&merchant);
+
+    client.charge(&user);
+
+    let user_balance_after = token.balance(&user);
+    let merchant_balance_after = token.balance(&merchant);
+
+    // Verify exact amount transferred
+    assert_eq!(
+        user_balance_before - user_balance_after,
+        amount,
+        "user balance should decrease by subscription amount"
+    );
+    assert_eq!(
+        merchant_balance_after - merchant_balance_before,
+        amount,
+        "merchant balance should increase by subscription amount"
+    );
+
+    // Step 3: Pay-per-use with custom SAC token
+    let user_balance_before_ppu = token.balance(&user);
+    let merchant_balance_before_ppu = token.balance(&merchant);
+
+    let ppu_amount: i128 = 2_0000000;
+    client.pay_per_use(&user, &ppu_amount);
+
+    let user_balance_after_ppu = token.balance(&user);
+    let merchant_balance_after_ppu = token.balance(&merchant);
+
+    // Verify pay-per-use amount transferred
+    assert_eq!(
+        user_balance_before_ppu - user_balance_after_ppu,
+        ppu_amount,
+        "user balance should decrease by pay_per_use amount"
+    );
+    assert_eq!(
+        merchant_balance_after_ppu - merchant_balance_before_ppu,
+        ppu_amount,
+        "merchant balance should increase by pay_per_use amount"
+    );
+
+    // Verify subscription is still active after pay_per_use
+    let sub_final = client.get_subscription(&user).unwrap();
+    assert!(sub_final.active, "subscription should remain active after pay_per_use");
+}
