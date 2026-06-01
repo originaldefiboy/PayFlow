@@ -545,6 +545,54 @@ fn test_batch_charge_charged_and_skipped() {
 }
 
 #[test]
+fn test_batch_charge_ordering() {
+    let (env, contract_id, token_addr, user_1, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    
+    let user_2 = Address::generate(&env);
+    let sac = StellarAssetClient::new(&env, &token_addr);
+    sac.mint(&user_2, &10_000_0000000);
+    let token = TokenClient::new(&env, &token_addr);
+    token.approve(&user_2, &contract_id, &10_000_0000000, &200);
+
+    let user_3 = Address::generate(&env);
+    // user_3 has no subscription
+
+    let user_4 = Address::generate(&env);
+    sac.mint(&user_4, &10_000_0000000);
+    token.approve(&user_4, &contract_id, &10_000_0000000, &200);
+
+    let interval = 86400;
+
+    // user_1: valid, will be charged
+    client.subscribe(&user_1, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+
+    // user_2: valid, will be charged
+    client.subscribe(&user_2, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+
+    // user_4: valid but skipped (we will subscribe right before charge so interval not elapsed)
+    
+    env.ledger().with_mut(|l| { l.timestamp += interval + 1; });
+
+    client.subscribe(&user_4, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    // Order: user_2 (Charged), user_3 (Failed), user_4 (Skipped), user_1 (Charged)
+    users.push_back(user_2.clone());
+    users.push_back(user_3.clone());
+    users.push_back(user_4.clone());
+    users.push_back(user_1.clone());
+
+    let results = client.batch_charge(&users);
+
+    assert_eq!(results.len(), 4);
+    assert_eq!(results.get(0).unwrap(), crate::ChargeResult::Charged);
+    assert_eq!(results.get(1).unwrap(), crate::ChargeResult::NoSubscription);
+    assert_eq!(results.get(2).unwrap(), crate::ChargeResult::Skipped);
+    assert_eq!(results.get(3).unwrap(), crate::ChargeResult::Charged);
+}
+
+#[test]
 fn test_batch_charge_no_subscription() {
     let (env, contract_id, _token_addr, _user, _merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
