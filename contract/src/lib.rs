@@ -2,6 +2,8 @@
 
 mod admin;
 mod batch;
+#[cfg(test)]
+mod bench;
 mod errors;
 mod events;
 mod fee;
@@ -65,6 +67,8 @@ pub enum DataKey {
     ChargeHistory(Address),
     // Feature: emergency contract pause
     ContractPaused,
+    // Pending admin for two-step transfer
+    PendingAdmin,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -72,6 +76,8 @@ pub enum DataKey {
 // ─────────────────────────────────────────────────────────────
 
 pub const SUBSCRIPTION_TTL_LEDGERS: u32 = 6307200; // ~1 year (assuming 5s blocks)
+pub const MAX_AMOUNT: i128 = 100_000_000_000;
+pub const MAX_SUBSCRIPTION_AMOUNT: i128 = 1_000_000_0000000;
 
 // ─────────────────────────────────────────────────────────────
 // Data types
@@ -101,12 +107,13 @@ pub struct FlowPay;
 
 #[contractimpl]
 impl FlowPay {
-    pub fn initialize(env: Env, token: Address) {
+    pub fn initialize(env: Env, token: Address, admin: Address) {
         if env.storage().instance().has(&DataKey::Token) {
-            panic!("already initialized");
+            env.panic_with_error(ContractError::AlreadyInitialized);
         }
 
         env.storage().instance().set(&DataKey::Token, &token);
+        admin::initialize_admin(&env, &admin);
     }
 
     /// Creates or replaces a recurring subscription for `user`.
@@ -157,12 +164,23 @@ impl FlowPay {
             }
         }
 
-        assert!(amount > 0, "amount must be positive");
-        assert!(interval > 0, "interval must be positive");
+        if amount <= 0 {
+            env.panic_with_error(ContractError::AmountMustBePositive);
+        }
+        if interval == 0 {
+            env.panic_with_error(ContractError::IntervalMustBePositive);
+        }
+
+        use soroban_sdk::xdr::ToXdr;
+        if token.clone().to_xdr(&env).get(7) == Some(0) {
+            env.panic_with_error(ContractError::InvalidTokenAddress);
+        }
 
         let token_client = token::Client::new(&env, &token);
         let allowance = token_client.allowance(&user, &env.current_contract_address());
-        assert!(allowance >= amount, "insufficient allowance");
+        if allowance < amount {
+            env.panic_with_error(ContractError::InsufficientAllowance);
+        }
 
         let now = env.ledger().timestamp();
         let trial_duration = trial_period.unwrap_or(0);
@@ -181,13 +199,25 @@ impl FlowPay {
             trial_duration,
         };
 
+        let existing_sub: Option<Subscription> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Subscription(user.clone()));
+
+        let should_increment = existing_sub
+            .as_ref()
+            .map(|existing| !existing.active)
+            .unwrap_or(true);
+
         env.storage()
             .persistent()
             .set(&DataKey::Subscription(user.clone()), &sub);
 
         extend_subscription_ttl(&env, &user);
 
-        subscription_count::increment(&env);
+        if should_increment {
+            subscription_count::increment(&env);
+        }
         referral::store_referral(&env, &user, &referrer);
         events::publish_subscribed(&env, &user, &sub);
     }
@@ -228,8 +258,12 @@ impl FlowPay {
             .get(&key)
             .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
-        assert!(sub.active, "subscription is not active");
-        assert!(!sub.paused, "subscription is paused");
+        if !sub.active {
+            env.panic_with_error(ContractError::SubscriptionNotActive);
+        }
+        if sub.paused {
+            env.panic_with_error(ContractError::SubscriptionPaused);
+        }
 
         let now = env.ledger().timestamp();
 
@@ -244,14 +278,28 @@ impl FlowPay {
 
         let token = token::Client::new(&env, &sub.token);
 
+        let mut merchant_amount = sub.amount;
+        if let Some((collector, bps)) = fee::get_fee(&env) {
+            let fee_amount = (sub.amount * (bps as i128)) / 10_000;
+            if fee_amount > 0 {
+                token.transfer_from(
+                    &env.current_contract_address(),
+                    &user,
+                    &collector,
+                    &fee_amount,
+                );
+                merchant_amount = sub.amount - fee_amount;
+            }
+        }
+
         token.transfer_from(
             &env.current_contract_address(),
             &user,
             &sub.merchant,
-            &sub.amount,
+            &merchant_amount,
         );
 
-        merchant_stats::increment_revenue_with_daily(&env, &sub.merchant, sub.amount);
+        merchant_stats::increment_revenue_with_daily(&env, &sub.merchant, merchant_amount);
 
         sub.last_charged = now;
 
@@ -259,7 +307,7 @@ impl FlowPay {
         extend_subscription_ttl(&env, &user);
 
         subscription_history::record_charge(&env, &user, now);
-        events::publish_charged(&env, &user, &sub, now);
+        events::publish_charged(&env, &user, &sub, 0, now);
     }
 
     pub fn extend_subscription_ttl(env: Env, user: Address) {
@@ -295,7 +343,12 @@ impl FlowPay {
         ensure_contract_not_paused(&env);
         user.require_auth();
 
-        assert!(amount > 0, "amount must be positive");
+        if amount <= 0 {
+            env.panic_with_error(ContractError::AmountMustBePositive);
+        }
+        if amount > MAX_AMOUNT {
+            env.panic_with_error(ContractError::AmountExceedsMaximum);
+        }
 
         let key = DataKey::Subscription(user.clone());
 
@@ -303,23 +356,41 @@ impl FlowPay {
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
-        assert!(sub.active, "subscription is not active");
-        assert!(!sub.paused, "subscription is paused");
+        if !sub.active {
+            env.panic_with_error(ContractError::SubscriptionNotActive);
+        }
+        if sub.paused {
+            env.panic_with_error(ContractError::SubscriptionPaused);
+        }
 
         spending_limit::enforce_limit(&env, &user, amount);
 
         let token = token::Client::new(&env, &sub.token);
 
+        let mut merchant_amount = amount;
+        if let Some((collector, bps)) = fee::get_fee(&env) {
+            let fee_amount = (amount * (bps as i128)) / 10_000;
+            if fee_amount > 0 {
+                token.transfer_from(
+                    &env.current_contract_address(),
+                    &user,
+                    &collector,
+                    &fee_amount,
+                );
+                merchant_amount = amount - fee_amount;
+            }
+        }
+
         token.transfer_from(
             &env.current_contract_address(),
             &user,
             &sub.merchant,
-            &amount,
+            &merchant_amount,
         );
 
-        merchant_stats::increment_revenue_with_daily(&env, &sub.merchant, amount);
+        merchant_stats::increment_revenue_with_daily(&env, &sub.merchant, merchant_amount);
         spending_limit::record_spend(&env, &user, amount);
 
         events::publish_pay_per_use(&env, &user, &sub.merchant, amount);
@@ -358,12 +429,12 @@ impl FlowPay {
             .get(&key)
             .expect("no subscription found");
 
-        sub.active = false;
-
-        env.storage().persistent().set(&key, &sub);
-
-        subscription_count::decrement(&env);
-        events::publish_cancelled(&env, &user);
+        if sub.active {
+            sub.active = false;
+            env.storage().persistent().set(&key, &sub);
+            subscription_count::decrement(&env);
+            events::publish_cancelled(&env, &user);
+        }
     }
 
     /// Pauses `user`'s subscription without cancelling it.
@@ -396,16 +467,17 @@ impl FlowPay {
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
-        assert!(sub.active, "subscription is not active");
+        if !sub.active {
+            env.panic_with_error(ContractError::SubscriptionNotActive);
+        }
 
         sub.paused = true;
 
         env.storage().persistent().set(&key, &sub);
 
-        env.events()
-            .publish((Symbol::new(&env, "paused"), user), ());
+        events::publish_paused(&env, &user);
     }
 
     /// Resumes `user`'s paused subscription.
@@ -438,16 +510,17 @@ impl FlowPay {
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
-        assert!(sub.active, "subscription is not active");
+        if !sub.active {
+            env.panic_with_error(ContractError::SubscriptionNotActive);
+        }
 
         sub.paused = false;
 
         env.storage().persistent().set(&key, &sub);
 
-        env.events()
-            .publish((Symbol::new(&env, "resumed"), user), ());
+        events::publish_resumed(&env, &user);
     }
 
     /// Pauses all user-facing payment operations for the contract.
@@ -468,25 +541,24 @@ impl FlowPay {
         events::publish_contract_unpaused(&env);
     }
 
-    /// Transfers admin rights to a new address.
-    ///
-    /// # Parameters
-    ///
-    /// - `new_admin`: The address that will become the new admin.
-    ///
-    /// # Returns
-    ///
-    /// Returns nothing.
+    /// Proposes a new admin (step 1 of two-step transfer).
+    /// The proposed address must call `accept_admin()` to complete the transfer.
     ///
     /// # Auth
     ///
     /// Requires authorization from the current admin.
-    ///
-    /// # Side Effects
-    ///
-    /// Updates the admin address in storage and emits `admin_transferred` event.
     pub fn transfer_admin(env: Env, new_admin: Address) {
         admin::transfer_admin(&env, &new_admin);
+    }
+
+    /// Accepts a pending admin transfer (step 2 of two-step transfer).
+    /// Emits `admin_transferred` and replaces the active admin.
+    ///
+    /// # Auth
+    ///
+    /// Requires authorization from the pending (new) admin.
+    pub fn accept_admin(env: Env) {
+        admin::accept_admin(&env);
     }
 
     /// Returns whether the contract is currently paused.
@@ -494,8 +566,14 @@ impl FlowPay {
         is_contract_paused(&env)
     }
 
+    /// Returns the default token address set during `initialize()`, or `None` if not initialized.
+    pub fn get_token(env: Env) -> Option<Address> {
+        storage::get_token(&env)
+    }
+
     /// Upgrades the current contract WASM to `new_wasm_hash`.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        admin::require_admin(&env);
         upgrade::upgrade(&env, new_wasm_hash);
     }
 
@@ -529,6 +607,12 @@ impl FlowPay {
     pub fn set_grace_period(env: Env, seconds: u64) {
         admin::require_admin(&env);
         grace::set_grace_period(&env, seconds);
+        events::publish_grace_period_updated(&env, seconds);
+    }
+
+    /// Returns the current grace period in seconds. Returns 0 if not set.
+    pub fn get_grace_period(env: Env) -> u64 {
+        grace::get_grace_period(&env)
     }
 
     /// Adds a merchant to the whitelist.
@@ -549,11 +633,27 @@ impl FlowPay {
         whitelist::set_whitelist_enabled(&env, enabled);
     }
 
+    /// Returns whether the merchant whitelist is currently enabled.
+    pub fn is_whitelist_enabled(env: Env) -> bool {
+        whitelist::is_whitelist_enabled(&env)
+    }
+
+    /// Returns whether a merchant is whitelisted.
+    pub fn is_merchant_whitelisted(env: Env, merchant: Address) -> bool {
+        whitelist::is_whitelisted(&env, &merchant)
+    }
+
+    /// Returns the current protocol fee settings, or `None` if unset.
+    pub fn get_fee(env: Env) -> Option<(Address, u32)> {
+        fee::get_fee_collector(&env).map(|collector| (collector, fee::get_fee_bps(&env)))
+    }
+
     /// Sets the protocol fee collection settings.
     /// Only the contract admin can call this.
     pub fn set_fee(env: Env, collector: Address, bps: u32) {
         admin::require_admin(&env);
-        fee::set_fee(&env, collector, bps);
+        fee::set_fee(&env, collector.clone(), bps);
+        events::publish_fee_updated(&env, &collector, bps);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -610,7 +710,9 @@ impl FlowPay {
     /// Stored in temporary storage; resets automatically after ~1 day.
     pub fn set_daily_limit(env: Env, user: Address, limit: i128) {
         user.require_auth();
-        assert!(limit > 0, "limit must be positive");
+        if limit <= 0 {
+            env.panic_with_error(ContractError::AmountMustBePositive);
+        }
         spending_limit::set_daily_limit(&env, &user, limit);
         events::publish_daily_limit_set(&env, &user, limit);
     }
@@ -647,8 +749,8 @@ impl FlowPay {
 
     /// Migrates contract storage to the latest schema version.
     /// Safe to call multiple times — subsequent calls are no-ops.
-    pub fn migrate(env: Env) {
-        migration::migrate(&env);
+    pub fn migrate(env: Env, users: Vec<Address>) {
+        migration::migrate(&env, users);
     }
 
     /// Returns the current storage schema version.
@@ -663,12 +765,20 @@ impl FlowPay {
     /// Attaches a short label (e.g. plan name) to the caller's subscription.
     pub fn set_metadata(env: Env, user: Address, label: String) {
         user.require_auth();
-        subscription_metadata::set_metadata(&env, &user, label);
+        if let Err(err) = subscription_metadata::set_metadata(&env, &user, label) {
+            env.panic_with_error(err);
+        }
     }
 
     /// Returns the metadata label for a subscriber, or `None` if not set.
     pub fn get_metadata(env: Env, user: Address) -> Option<String> {
         subscription_metadata::get_metadata(&env, &user)
+    }
+
+    /// Clears the metadata label for the caller's subscription.
+    pub fn clear_metadata(env: Env, user: Address) {
+        user.require_auth();
+        subscription_metadata::clear_metadata(&env, &user);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -679,6 +789,16 @@ impl FlowPay {
     /// ordered oldest → newest.
     pub fn get_charge_history(env: Env, user: Address) -> Vec<u64> {
         subscription_history::get_charge_history(&env, &user)
+    }
+
+    /// Clears the charge history for a subscriber.
+    pub fn clear_charge_history(env: Env, user: Address) {
+        user.require_auth();
+        subscription_history::clear_charge_history(&env, &user);
+    /// Returns a paginated slice of charge timestamps for a subscriber.
+    /// limit is capped at 12.
+    pub fn get_charge_history_page(env: Env, user: Address, offset: u32, limit: u32) -> Vec<u64> {
+        subscription_history::get_charge_history_page(&env, &user, offset, limit)
     }
 }
 
@@ -698,5 +818,7 @@ fn is_contract_paused(env: &Env) -> bool {
 }
 
 fn ensure_contract_not_paused(env: &Env) {
-    assert!(!is_contract_paused(env), "contract is paused");
+    if is_contract_paused(env) {
+        env.panic_with_error(ContractError::ContractPaused);
+    }
 }
