@@ -429,12 +429,12 @@ impl FlowPay {
             .get(&key)
             .expect("no subscription found");
 
-        sub.active = false;
-
-        env.storage().persistent().set(&key, &sub);
-
-        subscription_count::decrement(&env);
-        events::publish_cancelled(&env, &user);
+        if sub.active {
+            sub.active = false;
+            env.storage().persistent().set(&key, &sub);
+            subscription_count::decrement(&env);
+            events::publish_cancelled(&env, &user);
+        }
     }
 
     /// Pauses `user`'s subscription without cancelling it.

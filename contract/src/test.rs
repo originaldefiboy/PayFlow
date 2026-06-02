@@ -1204,6 +1204,33 @@ fn test_active_count_decrements_on_cancel() {
     assert_eq!(client.get_active_count(), 0);
 }
 
+/// Issue #197: double-cancel must not decrement active count below zero.
+#[test]
+fn test_double_cancel_does_not_underflow_active_count() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+    assert_eq!(client.get_active_count(), 1);
+
+    client.cancel(&user);
+    assert_eq!(client.get_active_count(), 0);
+
+    client.cancel(&user);
+    assert_eq!(client.get_active_count(), 0);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(!sub.active);
+}
+
 #[test]
 fn test_active_count_multiple_users() {
     let (env, contract_id, token_addr, user_a, merchant) = setup();
