@@ -1,5 +1,5 @@
-use soroban_sdk::{Address, Env};
 use crate::DataKey;
+use soroban_sdk::{Address, Env};
 use crate::events;
 
 /// Checks if a merchant is whitelisted.
@@ -35,5 +35,7 @@ pub fn is_whitelist_enabled(env: &Env) -> bool {
 
 /// Enables or disables the merchant whitelist.
 pub fn set_whitelist_enabled(env: &Env, enabled: bool) {
-    env.storage().instance().set(&DataKey::WhitelistEnabled, &enabled);
+    env.storage()
+        .instance()
+        .set(&DataKey::WhitelistEnabled, &enabled);
 }

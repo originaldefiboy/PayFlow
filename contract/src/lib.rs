@@ -2,6 +2,7 @@
 
 mod admin;
 mod batch;
+#[cfg(test)]
 mod bench;
 mod errors;
 mod events;
@@ -601,12 +602,6 @@ impl FlowPay {
         trial::get_trial_end(env, user)
     }
 
-    /// Returns the contract-wide grace period in seconds.
-    /// Returns 0 if no grace period has been set.
-    pub fn get_grace_period(env: Env) -> u64 {
-        grace::get_grace_period(&env)
-    }
-
     /// Sets the contract-wide grace period for charges.
     /// Only the contract admin can call this.
     pub fn set_grace_period(env: Env, seconds: u64) {
@@ -791,12 +786,7 @@ impl FlowPay {
 
     /// Returns a paginated slice of charge timestamps for a subscriber.
     /// limit is capped at 12.
-    pub fn get_charge_history_page(
-        env: Env,
-        user: Address,
-        offset: u32,
-        limit: u32,
-    ) -> Vec<u64> {
+    pub fn get_charge_history_page(env: Env, user: Address, offset: u32, limit: u32) -> Vec<u64> {
         subscription_history::get_charge_history_page(&env, &user, offset, limit)
     }
 }
@@ -821,4 +811,3 @@ fn ensure_contract_not_paused(env: &Env) {
         env.panic_with_error(ContractError::ContractPaused);
     }
 }
-
