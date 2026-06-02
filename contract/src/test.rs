@@ -1424,4 +1424,65 @@ fn test_charge_insufficient_allowance() {
     // charge() should panic because transfer_from fails with insufficient allowance
     client.charge(&user);
 
+    #[test]
+fn test_subscription_history_oldest_entry_eviction() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, PayFlowContract);
+    let client = PayFlowContractClient::new(&env, &contract_id);
+
+    // Initialize test accounts and subscription setup here if required by contract context
+    let user = Address::generate(&env);
+    
+    // Simulate 13 consecutive charges to trigger eviction (cap is 12)
+    // We store the unique timestamp of the very first charge to verify eviction
+    let first_charge_timestamp = 1000; 
+    
+    // 1. Trigger the first baseline charge
+    env.ledger().set_timestamp(first_charge_timestamp);
+    client.mock_charge(&user); 
+
+    // 2. Trigger 12 subsequent charges to push history count to 13 total
+    for i in 1..13 {
+        env.ledger().set_timestamp(first_charge_timestamp + (i * 100));
+        client.mock_charge(&user);
+    }
+
+    // Retrieve the history array 
+    let history = client.get_charge_history(&user);
+
+    // Assert that the array matches the strict cap size limit of 12 entries
+    assert_eq!(history.len(), 12);
+
+    // Assert that the very first charge timestamp has been evicted completely (FIFO verification)
+    for entry in history.iter() {
+        assert_ne!(entry.timestamp, first_charge_timestamp);
+    }
+}
+
+#[test]
+fn test_subscription_history_chronological_ordering() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, PayFlowContract);
+    let client = PayFlowContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let base_timestamp = 2000;
+
+    // Record 5 unique charges spaced sequentially over time
+    for i in 0..5 {
+        env.ledger().set_timestamp(base_timestamp + (i * 500));
+        client.mock_charge(&user);
+    }
+
+    let history = client.get_charge_history(&user);
+    assert!(history.len() >= 2);
+
+    // Strictly verify that history is ordered oldest -> newest
+    for i in 0..(history.len() - 1) {
+        let older_entry = history.get(i).unwrap();
+        let newer_entry = history.get(i + 1).unwrap();
+        assert!(older_entry.timestamp < newer_entry.timestamp);
+    }
+    }
+
 }
