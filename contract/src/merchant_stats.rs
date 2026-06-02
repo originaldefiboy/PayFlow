@@ -13,9 +13,10 @@ pub fn get_merchant_revenue(env: &Env, merchant: &Address) -> i128 {
 /// Adds `amount` to the merchant's running revenue total.
 pub fn increment_revenue(env: &Env, merchant: &Address, amount: i128) {
     let current = get_merchant_revenue(env, merchant);
-    env.storage()
-        .persistent()
-        .set(&DataKey::MerchantRevenue(merchant.clone()), &(current + amount));
+    env.storage().persistent().set(
+        &DataKey::MerchantRevenue(merchant.clone()),
+        &(current + amount),
+    );
 }
 
 /// Returns the per-day revenue for the last `days` days (oldest -> newest).
@@ -83,4 +84,9 @@ pub fn decrement_subscriber_count(env: &Env, merchant: &Address) {
             .persistent()
             .set(&DataKey::MerchantSubCount(merchant.clone()), &(count - 1));
     }
+/// Resets a merchant's cumulative revenue counter to zero.
+pub fn reset_merchant_revenue(env: &Env, merchant: &Address) {
+    env.storage()
+        .persistent()
+        .set(&DataKey::MerchantRevenue(merchant.clone()), &0i128);
 }
