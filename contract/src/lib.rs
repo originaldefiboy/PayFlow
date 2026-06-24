@@ -271,12 +271,15 @@ impl FlowPay {
 
         let now = env.ledger().timestamp();
 
-        if now < sub.last_charged + sub.interval {
+        let next = charge_exec::compute_next_charge_at(&sub)
+            .unwrap_or_else(|| env.panic_with_error(ContractError::SubscriptionPaused));
+
+        if now < next {
             env.panic_with_error(ContractError::IntervalNotElapsed);
         }
 
         let grace_period = grace::get_grace_period(&env);
-        if grace_period > 0 && now > sub.last_charged + sub.interval + grace_period {
+        if grace_period > 0 && now > next + grace_period {
             env.panic_with_error(ContractError::GracePeriodElapsed);
         }
 
@@ -562,18 +565,39 @@ impl FlowPay {
 
     /// Returns the Unix timestamp of the next scheduled charge for a user.
     ///
-    /// Returns `None` if:
-    /// - No subscription exists for the user
-    /// - The subscription is inactive (cancelled)
-    ///
-    /// Returns `Some(last_charged + interval)` if the subscription is active.
+    /// Returns `None` if no subscription exists, the subscription is inactive,
+    /// or the subscription is paused.
     pub fn next_charge_at(env: Env, user: Address) -> Option<u64> {
         let sub = storage::get_subscription(&env, &user)?;
-        if !sub.active {
-            None
-        } else {
-            Some(sub.last_charged + sub.interval)
+        charge_exec::compute_next_charge_at(&sub)
+    }
+
+    /// Returns `true` when `user` has a charge due right now.
+    ///
+    /// A charge is due when:
+    /// - The subscription is active and not paused
+    /// - `now >= next_charge_at` (interval has elapsed)
+    /// - `now <= next_charge_at + grace_period` (still within grace window, or no grace period set)
+    ///
+    /// No auth required.
+    pub fn is_charge_due(env: Env, user: Address) -> bool {
+        let sub = match storage::get_subscription(&env, &user) {
+            Some(s) => s,
+            None => return false,
+        };
+        let next = match charge_exec::compute_next_charge_at(&sub) {
+            Some(n) => n,
+            None => return false,
+        };
+        let now = env.ledger().timestamp();
+        if now < next {
+            return false;
         }
+        let grace = grace::get_grace_period(&env);
+        if grace > 0 && now > next + grace {
+            return false;
+        }
+        true
     }
 
     /// Returns the trial end timestamp if the user is in a trial period.
