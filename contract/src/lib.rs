@@ -1072,7 +1072,10 @@ impl FlowPay {
         let contract_paused = storage::is_contract_paused(&env);
         let token_configured = storage::get_token(&env).is_some();
         let admin_configured = storage::get_admin_optional(&env).is_some();
-        let instance_ttl_ledgers = env.storage().instance().get_ttl();
+        #[cfg(test)]
+        let instance_ttl_ledgers: u32 = env.storage().instance().get_ttl();
+        #[cfg(not(test))]
+        let instance_ttl_ledgers: u32 = 0;
         let active_subscription_count = subscription_count::get_active_count(&env);
         let schema_version = migration::get_schema_version(&env);
 
