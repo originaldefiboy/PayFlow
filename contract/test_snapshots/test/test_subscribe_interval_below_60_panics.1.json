@@ -902,7 +902,7 @@
                   }
                 },
                 {
-                  "u64": 1800
+                  "u64": 59
                 },
                 {
                   "address": "CBEPDNVYXQGWB5YUBXKJWYJA7OXTZW5LFLNO5JRRGE6Z6C5OSUZPCCEL"
@@ -1098,7 +1098,6 @@
                     },
                     {
                       "u64": 59
-                      "u64": 1800
                     },
                     {
                       "address": "CBEPDNVYXQGWB5YUBXKJWYJA7OXTZW5LFLNO5JRRGE6Z6C5OSUZPCCEL"

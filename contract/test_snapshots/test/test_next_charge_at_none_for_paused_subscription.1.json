@@ -1509,6 +1509,11 @@
                   "u32": 100
                 }
               ]
+                "symbol": "pause"
+              }
+            ],
+            "data": {
+              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
             }
           }
         }
@@ -1547,6 +1552,7 @@
         "ext": "v0",
         "contract_id": null,
         "type_": "diagnostic",
+        "type_": "contract",
         "body": {
           "v0": {
             "topics": [
@@ -1563,6 +1569,13 @@
             "data": {
               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
             }
+                "symbol": "paused"
+              },
+              {
+                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+              }
+            ],
+            "data": "void"
           }
         }
       },
