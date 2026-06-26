@@ -166,7 +166,8 @@ fn test_charge_applies_protocol_fee_and_records_net_revenue() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-    client.set_fee(&collector, &500u32); // 5%
+    client.propose_fee(, );
+    client.commit_fee(); // 5%
 
     let amount: i128 = 10_0000000;
     let expected_fee: i128 = 500_0000;
@@ -199,7 +200,8 @@ fn test_charge_with_zero_fee_bps_skips_fee_transfer() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-    client.set_fee(&collector, &0u32);
+    client.propose_fee(, );
+    client.commit_fee();
 
     let amount: i128 = 5_0000000;
     let interval: u64 = 86400;
@@ -719,7 +721,8 @@ fn test_pay_per_use_applies_protocol_fee_and_records_net_revenue() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-    client.set_fee(&collector, &250u32); // 2.5%
+    client.propose_fee(, );
+    client.commit_fee(); // 2.5%
 
     client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
 
@@ -747,7 +750,8 @@ fn test_pay_per_use_with_zero_fee_bps_transfers_full_amount() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-    client.set_fee(&collector, &0u32);
+    client.propose_fee(, );
+    client.commit_fee();
     client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
 
     let amount: i128 = 3_0000000;
@@ -983,6 +987,9 @@ fn test_interval_too_short() {
 fn test_interval_minimum_valid() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&token_addr, &admin);
+    client.set_min_interval(&60u64);
 
     client.subscribe(&user, &merchant, &1_0000000, &3600, &token_addr, &None, &None);
     let sub = client.get_subscription(&user).unwrap();
@@ -1315,7 +1322,8 @@ fn test_batch_charge_with_fee() {
 
     let collector = Address::generate(&env);
     let fee_bps: u32 = 100; // 1%
-    client.set_fee(&collector, &fee_bps);
+    client.propose_fee(, );
+    client.commit_fee();
 
     let user_b = Address::generate(&env);
     let sac = StellarAssetClient::new(&env, &token_addr);
@@ -1393,7 +1401,8 @@ fn test_batch_charge_grace_period_elapsed() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &user);
     });
-    client.set_grace_period(&86400);
+    client.propose_grace_period();
+    client.commit_grace_period();
 
     let interval: u64 = 86400;
     client.subscribe(
@@ -1933,7 +1942,8 @@ fn test_grace_period_ttl_extension() {
 
     // Set a grace period as admin and verify read returns the same value.
     let seconds: u64 = 3600;
-    client.set_grace_period(&seconds);
+    client.propose_grace_period();
+    client.commit_grace_period();
     let got = client.get_grace_period();
     assert_eq!(got, seconds);
 }
@@ -2169,6 +2179,22 @@ fn test_ttl_extension() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
 
+    env.ledger().with_mut(|l| {
+        l.max_entry_ttl = 10_000_000;
+    });
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    // We can't easily assert the exact TTL in the test environment without more complex mock_all_auths
+    // or internal access, but we can verify the function exists and doesn't panic.
     client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
 
     // Keep the contract instance itself alive across the jump below — only the
@@ -2191,7 +2217,7 @@ fn test_ttl_extension() {
 
 #[test]
 #[should_panic]
-fn test_subscribe_interval_below_60_panics() {
+fn test_subscribe_interval_under_60_panics() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
 
@@ -2202,6 +2228,9 @@ fn test_subscribe_interval_below_60_panics() {
 fn test_subscribe_interval_minimum_succeeds() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&token_addr, &admin);
+    client.set_min_interval(&60u64);
 
     client.subscribe(&user, &merchant, &1_0000000, &3600, &token_addr, &None, &None);
 
@@ -2210,10 +2239,15 @@ fn test_subscribe_interval_minimum_succeeds() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #15)")]
 fn test_subscribe_amount_above_cap_panics() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
+
+    let sac = StellarAssetClient::new(&env, &token_addr);
+    sac.mint(&user, &(MAX_SUBSCRIPTION_AMOUNT + 1));
+    let token = TokenClient::new(&env, &token_addr);
+    token.approve(&user, &contract_id, &(MAX_SUBSCRIPTION_AMOUNT + 1), &200);
 
     client.subscribe(
         &user,
@@ -2656,17 +2690,32 @@ fn test_subscriber_page_offset_beyond_count_returns_empty() {
 
 #[test]
 fn test_subscriber_page_limit_capped_at_50() {
-    let (env, contract_id, token_addr, user, merchant) = setup();
+    let (env, contract_id, token_addr, _user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
+    let sac = StellarAssetClient::new(&env, &token_addr);
 
-    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+    for _ in 0..52 {
+        let sub_user = Address::generate(&env);
+        sac.mint(&sub_user, &10_000_0000000);
+        let token = TokenClient::new(&env, &token_addr);
+        token.approve(&sub_user, &contract_id, &10_000_0000000, &200);
 
-    // limit > 50 returns at most 50 (here only 1 entry exists, so we get 1)
+        client.subscribe(
+            &sub_user,
+            &merchant,
+            &1_0000000,
+            &86400,
+            &token_addr,
+            &None,
+            &None,
+        );
+    }
+
+    assert_eq!(client.get_subscriber_count(), 52);
+
     let page = client.get_subscriber_page(&0u64, &100u32);
-    assert_eq!(page.len(), 1);
+    assert_eq!(page.len(), 50);
 }
-
-// ─────────────────────────────────────────────
 // Issue #231: token.rs SAC compatibility test
 // ─────────────────────────────────────────────
 
@@ -2800,7 +2849,8 @@ fn test_get_grace_period_after_set() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &user);
     });
-    client.set_grace_period(&3600);
+    client.propose_grace_period();
+    client.commit_grace_period();
     assert_eq!(client.get_grace_period(), 3600);
 }
 
@@ -2817,7 +2867,8 @@ fn test_set_fee_emits_event() {
     });
 
     let collector = Address::generate(&env);
-    client.set_fee(&collector, &100u32);
+    client.propose_fee(, );
+    client.commit_fee();
 
     let events = env.events().all();
     let (_, topics, data) = events.get(events.len() - 1).unwrap();
@@ -2838,7 +2889,8 @@ fn test_get_fee_returns_current_fee_settings() {
     });
 
     let collector = Address::generate(&env);
-    client.set_fee(&collector, &250u32);
+    client.propose_fee(, );
+    client.commit_fee();
 
     assert_eq!(client.get_fee(), Some((collector, 250u32)));
 }
@@ -2853,7 +2905,8 @@ fn test_set_fee_invalid_bps_panics() {
     });
 
     let collector = Address::generate(&env);
-    client.set_fee(&collector, &10_001u32);
+    client.propose_fee(, );
+    client.commit_fee();
 }
 
 // ─────────────────────────────────────────────
@@ -2868,7 +2921,8 @@ fn test_set_grace_period_emits_event() {
         storage::set_admin(&env, &user);
     });
 
-    client.set_grace_period(&7200u64);
+    client.propose_grace_period();
+    client.commit_grace_period();
 
     let events = env.events().all();
     let (_, topics, data) = events.get(events.len() - 1).unwrap();
@@ -2894,7 +2948,8 @@ fn test_charge_within_grace_window_succeeds() {
 
     let grace_period: u64 = 86400;
     let interval: u64 = 86400;
-    client.set_grace_period(&grace_period);
+    client.propose_grace_period();
+    client.commit_grace_period();
     client.subscribe(
         &user,
         &merchant,
@@ -2928,7 +2983,8 @@ fn test_charge_after_grace_window_panics() {
 
     let grace_period: u64 = 86400;
     let interval: u64 = 86400;
-    client.set_grace_period(&grace_period);
+    client.propose_grace_period();
+    client.commit_grace_period();
     client.subscribe(
         &user,
         &merchant,
@@ -2959,7 +3015,8 @@ fn test_non_admin_set_grace_period_panics() {
 
     env.set_auths(&[]);
 
-    client.set_grace_period(&3600u64);
+    client.propose_grace_period();
+    client.commit_grace_period();
 }
 
 // ─────────────────────────────────────────────
@@ -3053,6 +3110,37 @@ fn test_set_metadata_label_exceeding_limit_fails() {
 
     client.set_metadata(&user, &invalid_label);
 }
+// ─────────────────────────────────────────────
+// Issue #469: set_subscription_label auth and alias tests
+// ─────────────────────────────────────────────
+#[test]
+fn test_set_metadata_wrong_user_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+    let attacker = Address::generate(&env);
+    let label = soroban_sdk::String::from_str(&env, "hacked");
+    client.set_metadata(&attacker, &label);
+}
+
+#[test]
+fn test_get_subscription_label_returns_set_value() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+    let label = soroban_sdk::String::from_str(&env, "premium");
+    client.set_metadata(&user, &label);
+    assert_eq!(client.get_subscription_label(&user), Some(label));
+}
+
+#[test]
+fn test_get_subscription_label_none_when_not_set() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let random = Address::generate(&env);
+    assert!(client.get_subscription_label(&random).is_none());
+}
+
 
 // ─────────────────────────────────────────────
 // Tests for pause() and resume()

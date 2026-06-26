@@ -82,6 +82,10 @@ pub enum DataKey {
     MerchantSubCount(Address),
     // Pending admin for two-step transfer
     PendingAdmin,
+    // Two-step auth for protocol fee
+    PendingFee,
+    // Two-step auth for grace period
+    PendingGracePeriod,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -193,9 +197,7 @@ impl FlowPay {
             env.panic_with_error(ContractError::MerchantFrozen);
         }
 
-        if amount <= 0 {
-            env.panic_with_error(ContractError::AmountMustBePositive);
-        }
+        validation::require_valid_amount(&env, amount);
         if interval == 0 {
             env.panic_with_error(ContractError::IntervalMustBePositive);
         }
@@ -224,6 +226,9 @@ impl FlowPay {
         let trial_duration = trial_period.unwrap_or(0);
         let last_charged = now + trial_duration;
 
+        let existing = storage::get_subscription(&env, &user);
+        let should_increment = existing.as_ref().map_or(true, |s| !s.active);
+
         let sub = Subscription {
             merchant,
             amount,
@@ -233,19 +238,9 @@ impl FlowPay {
             paused: false,
             token,
             referrer: referrer.clone(),
-            label: Symbol::new(&env, "default"),
+            label: Symbol::new(&env, ""), // deprecated: use SubscriptionMeta storage instead
             trial_duration,
         };
-
-        let existing_sub: Option<Subscription> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Subscription(user.clone()));
-
-        let should_increment = existing_sub
-            .as_ref()
-            .map(|existing| !existing.active)
-            .unwrap_or(true);
 
         env.storage()
             .persistent()
@@ -640,12 +635,18 @@ impl FlowPay {
         trial::get_trial_end(env, user)
     }
 
-    /// Sets the contract-wide grace period for charges.
+    /// Proposes a new contract-wide grace period for charges.
     /// Only the contract admin can call this.
-    pub fn set_grace_period(env: Env, seconds: u64) {
+    pub fn propose_grace_period(env: Env, seconds: u64) {
         admin::require_admin(&env);
-        grace::set_grace_period(&env, seconds);
-        events::publish_grace_period_updated(&env, seconds);
+        grace::propose_grace_period(&env, seconds);
+    }
+
+    /// Commits a pending contract-wide grace period proposal.
+    /// Only the contract admin can call this.
+    pub fn commit_grace_period(env: Env) {
+        admin::require_admin(&env);
+        grace::commit_grace_period(&env);
     }
 
     /// Returns the current grace period in seconds. Returns 0 if not set.
@@ -808,6 +809,21 @@ impl FlowPay {
         whitelist::unfreeze(&env, &merchant);
     }
 
+    /// Extends the TTL of a specific merchant daily revenue bucket.
+    pub fn bump_merchant_revenue_day(env: Env, merchant: Address, day: u64) {
+        merchant_stats::bump_merchant_revenue_day(&env, &merchant, day);
+    }
+
+    /// Prunes missing or expired daily revenue buckets safely. Admin only.
+    pub fn prune_merchant_revenue_days(env: Env, merchant: Address, days: Vec<u64>) {
+        merchant_stats::prune_merchant_revenue_days(&env, &merchant, days);
+    }
+
+    /// Retrieves a specific daily revenue bucket. Returns 0 if missing.
+    pub fn get_merchant_revenue_day(env: Env, merchant: Address, day: u64) -> i128 {
+        merchant_stats::get_merchant_revenue_day(&env, &merchant, day)
+    }
+
     /// Returns whether a merchant is currently frozen.
     pub fn is_merchant_frozen(env: Env, merchant: Address) -> bool {
         whitelist::is_frozen(&env, &merchant)
@@ -818,12 +834,18 @@ impl FlowPay {
         fee::get_fee_collector(&env).map(|collector| (collector, fee::get_fee_bps(&env)))
     }
 
-    /// Sets the protocol fee collection settings.
+    /// Proposes new protocol fee collection settings.
     /// Only the contract admin can call this.
-    pub fn set_fee(env: Env, collector: Address, bps: u32) {
+    pub fn propose_fee(env: Env, collector: Address, bps: u32) {
         admin::require_admin(&env);
-        fee::set_fee(&env, collector.clone(), bps);
-        events::publish_fee_updated(&env, &collector, bps);
+        fee::propose_fee(&env, collector, bps);
+    }
+
+    /// Commits pending protocol fee collection settings.
+    /// Only the contract admin can call this.
+    pub fn commit_fee(env: Env) {
+        admin::require_admin(&env);
+        fee::commit_fee(&env);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1045,6 +1067,11 @@ impl FlowPay {
 
     /// Returns the metadata label for a subscriber, or `None` if not set.
     pub fn get_metadata(env: Env, user: Address) -> Option<String> {
+        subscription_metadata::get_metadata(&env, &user)
+    }
+
+    /// Alias for `get_metadata` — returns the metadata label for a subscriber, or `None` if not set.
+    pub fn get_subscription_label(env: Env, user: Address) -> Option<String> {
         subscription_metadata::get_metadata(&env, &user)
     }
 
