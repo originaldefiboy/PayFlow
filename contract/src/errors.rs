@@ -46,4 +46,6 @@ pub enum ContractError {
     ZeroBalanceAvailable = 20,
     /// Returned when attempting to subscribe to a frozen merchant
     MerchantFrozen = 22,
+    /// Returned when a two-step commit is attempted without a pending proposal
+    NoPendingProposal = 23,
 }
