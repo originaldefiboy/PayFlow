@@ -3,6 +3,13 @@
 This document is the complete reference for the FlowPay Soroban smart contract. It covers every public function, its parameters, return values, auth requirements, and error conditions.
 
 *See also: [Daily Spending Limits Guide](./DAILY-LIMITS.md) for a conceptual overview of the `pay_per_use` spending cap.*
+For a complete list of all error codes returned by the contract, see [ERROR-CODES.md](./ERROR-CODES.md).
+
+For a complete reference of all events emitted by the contract, see [EVENTS.md](./EVENTS.md).
+
+For a guide on using custom SAC tokens for subscriptions, see [MULTI-TOKEN.md](./MULTI-TOKEN.md).
+
+For a guide on the referral tracking system, see [REFERRAL.md](./REFERRAL.md).
 
 ---
 
@@ -1112,6 +1119,8 @@ All intervals are in **seconds**.
 ## Events Reference
 
 All events can be indexed by listening to the Stellar RPC event stream for the FlowPay contract ID.
+
+For a complete reference of all events with detailed schemas and examples, see [EVENTS.md](./EVENTS.md).
 
 | Event name | Topic | Data |
 | --- | --- | --- |
