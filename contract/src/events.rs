@@ -96,6 +96,7 @@ pub fn publish_daily_limit_removed(env: &Env, user: &Address) {
         .publish((Symbol::new(env, "daily_limit_removed"), user.clone()), ());
 }
 
+<<<<<<< HEAD
 pub fn publish_admin_transferred(env: &Env, old_admin: &Address, new_admin: &Address) {
     env.events().publish(
         (Symbol::new(env, "admin_transferred"),),
@@ -162,6 +163,9 @@ pub fn publish_subscription_transferred(env: &Env, old_user: &Address, new_user:
     env.events().publish(
         (Symbol::new(env, "sub_transferred"), old_user.clone()),
         new_user.clone(),
+    );
+}
+
 pub fn publish_subscription_amount_updated(
     env: &Env,
     user: &Address,
@@ -191,4 +195,9 @@ pub fn publish_merchant_withdrawal(env: &Env, merchant: &Address, amount: i128) 
         (Symbol::new(env, "merchant_withdrawal"), merchant.clone()),
         amount,
     );
+}
+
+pub fn publish_subscription_paused(env: &Env, user: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "subscription_paused"), user.clone()), ());
 }

@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
-    Address, BytesN, Env, Symbol, TryIntoVal,
+    Address, BytesN, Env, Symbol, TryIntoVal, Vec,
 };
 
 /// Returns (env, contract_id, token_addr, user, merchant)
@@ -45,6 +45,17 @@ fn setup_second_token(env: &Env, contract_id: &Address, user: &Address) -> Addre
     token_addr
 }
 
+fn setup_funded_user(env: &Env, contract_id: &Address, token_addr: &Address) -> Address {
+    let user = Address::generate(env);
+    let sac = StellarAssetClient::new(env, token_addr);
+    sac.mint(&user, &10_000_0000000);
+
+    let token = TokenClient::new(env, token_addr);
+    token.approve(&user, contract_id, &10_000_0000000, &200);
+
+    user
+}
+
 fn assert_last_event(env: &Env, topic: &str) {
     let events = env.events().all();
     let (_, topics, data) = events.get(events.len() - 1).unwrap();
@@ -63,6 +74,25 @@ fn assert_last_user_event(env: &Env, topic: &str, user: &Address) {
 
     assert_eq!(topic_symbol, Symbol::new(env, topic));
     assert_eq!(topic_user, user.clone());
+}
+
+fn count_user_events(env: &Env, topic: &str, user: &Address) -> u32 {
+    let expected_topic = Symbol::new(env, topic);
+    let mut count = 0;
+
+    for (_, topics, _) in env.events().all().iter() {
+        let topic_symbol: Symbol = topics.get(0).unwrap().try_into_val(env).unwrap();
+        if topic_symbol != expected_topic {
+            continue;
+        }
+
+        let topic_user: Address = topics.get(1).unwrap().try_into_val(env).unwrap();
+        if topic_user == user.clone() {
+            count += 1;
+        }
+    }
+
+    count
 }
 
 // ─────────────────────────────────────────────
@@ -1864,6 +1894,97 @@ fn test_migrate_v1_to_v2() {
     assert_eq!(v2_sub.active, true);
     assert_eq!(v2_sub.paused, false); // This is the newly added field
     assert_eq!(v2_sub.label, Symbol::new(&env, "v1_label"));
+}
+
+#[test]
+fn test_admin_batch_pause_subscriptions_freezes_multiple_accounts() {
+    let (env, contract_id, token_addr, user_a, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let user_b = setup_funded_user(&env, &contract_id, &token_addr);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user_a);
+    });
+
+    client.subscribe(&user_a, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+    client.subscribe(&user_b, &merchant, &2_0000000, &86400, &token_addr, &None, &None);
+
+    let mut users = Vec::new(&env);
+    users.push_back(user_a.clone());
+    users.push_back(user_b.clone());
+
+    client.batch_pause_subscriptions(&users);
+
+    assert!(client.get_subscription(&user_a).unwrap().paused);
+    assert!(client.get_subscription(&user_b).unwrap().paused);
+    assert_eq!(count_user_events(&env, "subscription_paused", &user_a), 1);
+    assert_eq!(count_user_events(&env, "subscription_paused", &user_b), 1);
+}
+
+#[test]
+#[should_panic]
+fn test_batch_pause_subscriptions_requires_admin_auth() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, FlowPay);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let mut users = Vec::new(&env);
+    users.push_back(user);
+
+    client.batch_pause_subscriptions(&users);
+}
+
+#[test]
+fn test_batch_pause_subscriptions_handles_valid_missing_and_pre_paused_accounts() {
+    let (env, contract_id, token_addr, user_a, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let user_b = setup_funded_user(&env, &contract_id, &token_addr);
+    let missing_user = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user_a);
+    });
+
+    client.subscribe(&user_a, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+    client.subscribe(&user_b, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+    client.pause(&user_b);
+
+    let mut users = Vec::new(&env);
+    users.push_back(missing_user.clone());
+    users.push_back(user_a.clone());
+    users.push_back(user_b.clone());
+
+    client.batch_pause_subscriptions(&users);
+
+    assert!(client.get_subscription(&user_a).unwrap().paused);
+    assert!(client.get_subscription(&user_b).unwrap().paused);
+    assert!(client.get_subscription(&missing_user).is_none());
+    assert_eq!(count_user_events(&env, "subscription_paused", &user_a), 1);
+    assert_eq!(count_user_events(&env, "subscription_paused", &user_b), 0);
+}
+
+#[test]
+#[should_panic(expected = "batch size exceeds maximum")]
+fn test_batch_pause_subscriptions_rejects_more_than_twenty_five_accounts() {
+    let (env, contract_id, _token_addr, user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    let mut users = Vec::new(&env);
+    for _ in 0..26 {
+        users.push_back(Address::generate(&env));
+    }
+
+    client.batch_pause_subscriptions(&users);
 }
 
 #[test]

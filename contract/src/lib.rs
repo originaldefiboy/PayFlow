@@ -73,8 +73,6 @@ pub enum DataKey {
     GlobalVolumeWindow,
     // Feature: contract pause
     ContractPaused,
-    // Feature: contract-level pause
-    ContractPaused,
     // Feature: minimum subscription interval floor
     MinInterval,
     // Feature: consolidated merchant revenue history (Vec<i128>)
@@ -101,6 +99,7 @@ pub const GLOBAL_MAX_VOLUME_PER_HOUR: i128 = 50_000_000_000_000; // 50 trillion 
 pub const HOUR_IN_SECONDS: u64 = 3600;
 pub const MAX_AMOUNT: i128 = 100_000_000_000;
 pub const MAX_SUBSCRIPTION_AMOUNT: i128 = 1_000_000_0000000;
+pub const MAX_BATCH_PAUSE_SUBSCRIPTIONS: u32 = 25;
 
 // ─────────────────────────────────────────────────────────────
 // Data types
@@ -594,6 +593,49 @@ impl FlowPay {
         events::publish_resumed(&env, &user);
     }
 
+
+    /// Pauses up to 25 active subscriptions in a single emergency admin action.
+    ///
+    /// Missing or inactive subscriptions are skipped so a mixed batch can still
+    /// process every valid account. Already-paused subscriptions are treated as
+    /// no-ops, but their TTL is refreshed to preserve idempotency.
+    pub fn batch_pause_subscriptions(env: Env, users: Vec<Address>) {
+        admin::require_admin(&env);
+        assert!(
+            users.len() <= MAX_BATCH_PAUSE_SUBSCRIPTIONS,
+            "batch size exceeds maximum"
+        );
+
+        for user in users.iter() {
+            let key = DataKey::Subscription(user.clone());
+            let sub_opt: Option<Subscription> = env.storage().persistent().get(&key);
+
+            if let Some(mut sub) = sub_opt {
+                if !sub.active {
+                    continue;
+                }
+
+                let was_paused = sub.paused;
+                sub.paused = true;
+
+                env.storage().persistent().set(&key, &sub);
+                extend_subscription_ttl(&env, &user);
+
+                if !was_paused {
+                    events::publish_subscription_paused(&env, &user);
+                }
+            }
+        }
+    }
+
+    /// Pauses all user-facing payment operations for the contract.
+    pub fn pause_contract(env: Env) {
+        admin::require_admin(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::ContractPaused, &true);
+        events::publish_contract_paused(&env);
+    }
 
     /// Proposes a new admin (step 1 of two-step transfer).
     /// The proposed address must call `accept_admin()` to complete the transfer.
