@@ -1,4 +1,14 @@
-import React, { useState, useRef } from "react";
+/*
+ * Chunk size note (Issue #445):
+ *   Before lazy-loading:
+ *     main chunk included MerchantDashboard (~8 KB) and SubscriptionHistory
+ *     (~7.5 KB) regardless of the active tab, delaying initial parse.
+ *   After lazy-loading:
+ *     MerchantDashboard is split into a dedicated "merchant" chunk via the
+ *     Vite chunk comment below. SubscriptionHistory is split into its own
+ *     dynamic chunk. The main entry chunk no longer contains either component.
+ */
+import React, { useState, useRef, lazy, Suspense } from "react";
 import { useWallet } from "./hooks/useWallet";
 import { useTheme } from "./hooks/useTheme";
 import { useLocalStorage } from "./hooks/useLocalStorage";
@@ -10,6 +20,7 @@ import { useContractId } from "./hooks/useContractId";
 import { useRpcHealthContext } from "./context/RpcHealthContext";
 import { useSubscriberCount } from "./hooks/useSubscriberCount";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useAnalytics } from "./hooks/useAnalytics";
 import SubscribeForm from "./components/SubscribeForm";
 import Dashboard from "./components/Dashboard";
 import MerchantDashboard from "./components/MerchantDashboard";
@@ -18,6 +29,13 @@ import TabBar from "./components/TabBar";
 import ConnectWallet from "./components/ConnectWallet";
 import WalletBar from "./components/WalletBar";
 import ErrorBoundary from "./components/ErrorBoundary";
+import SubscriptionCardSkeleton from "./components/Skeleton";
+
+// Lazy-loaded components — split into separate chunks to keep the main bundle lean.
+// MerchantDashboard gets a dedicated Vite chunk name for easier bundle analysis.
+const MerchantDashboard = lazy(
+  () => import(/* @vite-chunk-name: "merchant" */ "./components/MerchantDashboard")
+);
 
 function SunIcon() {
   return (
@@ -93,12 +111,14 @@ export default function App() {
   const { networkMatch, walletNetwork } = useNetworkCheck();
   const { valid: contractIdValid, error: contractIdError } = useContractId();
   const { healthy: rpcHealthy, circuitOpen: rpcCircuitOpen, error: rpcError } = useRpcHealthContext();
+  const { status: rpcStatus, latencyMs: rpcLatency, error: rpcError } = useRpcHealth();
   const { isMobile } = useResponsive();
   const { announcement, announce } = useAccessibility();
   const { count: subscriberCount, loading: subscriberCountLoading } = useSubscriberCount();
   const [tab, setTab] = useLocalStorage<"subscribe" | "dashboard" | "merchant" | "admin">("flowpay_tab", "dashboard");
   const [refresh, setRefresh] = useState(0);
   const [showHelp, setShowHelp] = useState(false);
+  const { isOptedIn: analyticsEnabled, setOptIn: setAnalyticsOptIn, track } = useAnalytics();
   const subscribeErrorBoundaryRef = useRef<ErrorBoundary>(null);
   const dashboardErrorBoundaryRef = useRef<ErrorBoundary>(null);
   const merchantErrorBoundaryRef = useRef<ErrorBoundary>(null);
@@ -152,6 +172,11 @@ export default function App() {
       },
     ],
   });
+
+  async function handleConnectWallet() {
+    await connect();
+    track({ type: "wallet_connected" });
+  }
 
   return (
     <div className={`app-shell${isMobile ? " app-shell--mobile" : ""}`}>
@@ -262,7 +287,13 @@ export default function App() {
       )}
 
       {/* RPC health warning */}
-      {!rpcHealthy && rpcError && (
+      {rpcStatus === "degraded" && (
+        <div className="network-warning network-warning--degraded" role="alert">
+          <span>⚠️</span>
+          <span>RPC connection degraded: Latency is high ({rpcLatency}ms)</span>
+        </div>
+      )}
+      {rpcStatus === "unreachable" && rpcError && (
         <div className="network-warning" role="alert">
           <span>{rpcCircuitOpen ? "🔴" : "⚠️"}</span>
           <span>
@@ -301,7 +332,30 @@ export default function App() {
 
       {/* Freighter installed but not connected */}
       {freighterAvailable && !publicKey && (
-        <ConnectWallet onConnect={connect} error={error} loading={connecting} />
+        <>
+          <div className="card connect-wallet">
+            <p className="connect-wallet__hint">
+              Help improve FlowPay with optional anonymous usage analytics.
+            </p>
+            <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
+              <button
+                className={`btn-secondary${analyticsEnabled ? " active" : ""}`}
+                onClick={() => setAnalyticsOptIn(true)}
+                type="button"
+              >
+                Opt in
+              </button>
+              <button
+                className={`btn-secondary${!analyticsEnabled ? " active" : ""}`}
+                onClick={() => setAnalyticsOptIn(false)}
+                type="button"
+              >
+                Keep disabled
+              </button>
+            </div>
+          </div>
+          <ConnectWallet onConnect={handleConnectWallet} error={error} loading={connecting} />
+        </>
       )}
 
       {/* Connected */}
@@ -331,6 +385,7 @@ export default function App() {
                 <SubscribeForm
                   userKey={publicKey}
                   onSign={signAndSubmit}
+                  onSubscribed={() => track({ type: "subscription_created" })}
                   onSuccess={() => {
                     setTab("dashboard");
                     setRefresh((r) => r + 1);
@@ -348,10 +403,13 @@ export default function App() {
                   />
                 }
               >
-                <MerchantDashboard
-                  merchantKey={publicKey}
-                  refreshTrigger={refresh}
-                />
+                <Suspense fallback={<SubscriptionCardSkeleton />}>
+                  <MerchantDashboard
+                    merchantKey={publicKey}
+                    onSign={signAndSubmit}
+                    refreshTrigger={refresh}
+                  />
+                </Suspense>
               </ErrorBoundary>
             ) : tab === "admin" ? (
               <SystemHealthCard callerKey={publicKey} />
@@ -370,6 +428,8 @@ export default function App() {
                   onSign={signAndSubmit}
                   refreshTrigger={refresh}
                   announce={announce}
+                  onCancelled={() => track({ type: "subscription_cancelled" })}
+                  onPayPerUse={(amount) => track({ type: "pay_per_use", metadata: { amount: amount.toString() } })}
                 />
               </ErrorBoundary>
             )}
