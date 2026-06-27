@@ -17,6 +17,7 @@ import {
 import { Server, assembleTransaction } from "@stellar/stellar-sdk/rpc";
 import type { Subscription, ChargeEvent } from "./types";
 import { ScValDecoder } from "./services/scval";
+import { dedupedCall } from "./services/rpcCache";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -212,41 +213,48 @@ export async function simulateBatchCharge(
 }
 
 
-export async function getDailyLimit(user: string): Promise<bigint | null> {
-  const contract = new Contract(CONTRACT_ID);
-  const account = await server.getAccount(user);
+export function getDailyLimit(user: string): Promise<bigint | null> {
+  return dedupedCall(`getDailyLimit:${user}`, async () => {
+    const contract = new Contract(CONTRACT_ID);
+    const account = await server.getAccount(user);
 
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(contract.call("get_daily_limit", addressVal(user)))
-    .setTimeout(30)
-    .build();
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_daily_limit", addressVal(user)))
+      .setTimeout(30)
+      .build();
 
-  const result = await server.simulateTransaction(tx);
-  if ("error" in result) throw new Error((result as any).error);
+    const result = await server.simulateTransaction(tx);
+    if ("error" in result) throw new Error((result as { error: string }).error);
 
   const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
   if (!retval) return null;
 
   return ScValDecoder.decodeOption(retval, ScValDecoder.decodeI128);
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    if (!retval || retval.switch().name === "scvVoid") return null;
+
+    return BigInt(retval.i128().toString());
+  });
 }
 
-export async function getDailySpent(user: string): Promise<bigint> {
-  const contract = new Contract(CONTRACT_ID);
-  const account = await server.getAccount(user);
+export function getDailySpent(user: string): Promise<bigint> {
+  return dedupedCall(`getDailySpent:${user}`, async () => {
+    const contract = new Contract(CONTRACT_ID);
+    const account = await server.getAccount(user);
 
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(contract.call("get_daily_spent", addressVal(user)))
-    .setTimeout(30)
-    .build();
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_daily_spent", addressVal(user)))
+      .setTimeout(30)
+      .build();
 
-  const result = await server.simulateTransaction(tx);
-  if ("error" in result) throw new Error((result as any).error);
+    const result = await server.simulateTransaction(tx);
+    if ("error" in result) throw new Error((result as { error: string }).error);
 
   const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
   if (!retval) return 0n;
@@ -256,6 +264,11 @@ export async function getDailySpent(user: string): Promise<bigint> {
   } catch {
     return 0n;
   }
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    if (!retval || retval.switch().name === "scvVoid") return 0n;
+
+    return BigInt(retval.i128().toString());
+  });
 }
 
 export async function buildApproveTx(user: string, tokenId: string, spender: string, amount: bigint): Promise<string> {
@@ -285,17 +298,21 @@ export async function buildApproveTx(user: string, tokenId: string, spender: str
   return assembled.toXDR();
 }
 
-export async function getSubscription(user: string): Promise<Subscription | null> {
-  const contract = new Contract(CONTRACT_ID);
-  const account = await server.getAccount(user);
+export function getSubscription(user: string): Promise<Subscription | null> {
+  return dedupedCall(`getSubscription:${user}`, async () => {
+    const contract = new Contract(CONTRACT_ID);
+    const account = await server.getAccount(user);
 
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(contract.call("get_subscription", addressVal(user)))
-    .setTimeout(30)
-    .build();
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_subscription", addressVal(user)))
+      .setTimeout(30)
+      .build();
+
+    const result = await server.simulateTransaction(tx);
+    if ("error" in result) throw new Error(result.error);
 
   const result = await server.simulateTransaction(tx);
   if ("error" in result) throw new Error(result.error);
@@ -330,6 +347,64 @@ export async function getSubscription(user: string): Promise<Subscription | null
     trial_duration: subscriptionData.trial_duration,
     label: label || undefined,
   };
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    if (!retval) return null;
+
+    if (retval.switch().name === "scvVoid") return null;
+
+    const fields: Record<string, unknown> = {};
+
+    for (const entry of retval.map() ?? []) {
+      const key = entry.key().sym().toString();
+      const val = entry.val();
+
+      switch (key) {
+        case "merchant":
+          fields[key] = Address.fromScVal(val).toString();
+          break;
+        case "amount":
+          fields[key] = val.i128().toString();
+          break;
+        case "interval":
+        case "last_charged":
+        case "trial_duration":
+          fields[key] = Number(val.u64());
+          break;
+        case "active":
+        case "paused":
+          fields[key] = val.b();
+          break;
+        case "token":
+          fields[key] = Address.fromScVal(val).toString();
+          break;
+        case "referrer":
+          if (val.switch().name === "scvVoid") {
+            fields[key] = null;
+          } else {
+            fields[key] = Address.fromScVal(val).toString();
+          }
+          break;
+        case "label":
+          fields[key] = val.sym().toString();
+          break;
+      }
+    }
+
+    const label = await getSubscriptionMetadata(user);
+
+    return {
+      ...(fields as {
+        merchant: string;
+        amount: string;
+        interval: number;
+        last_charged: number;
+        active: boolean;
+        paused: boolean;
+        trial_duration?: number;
+      }),
+      label: label || undefined,
+    };
+  });
 }
 
 export async function getSubscriptionMetadata(user: string): Promise<string | null> {
@@ -494,26 +569,27 @@ export async function getMerchantRevenueHistory(merchant: string, days = 7): Pro
   }
 }
 
-export async function getMerchantRevenue(merchant: string): Promise<bigint> {
-  try {
-    const contract = new Contract(CONTRACT_ID);
-    const account = await server.getAccount(merchant);
+export function getMerchantRevenue(merchant: string): Promise<bigint> {
+  return dedupedCall(`getMerchantRevenue:${merchant}`, async () => {
+    try {
+      const contract = new Contract(CONTRACT_ID);
+      const account = await server.getAccount(merchant);
 
-    const tx = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: NETWORK_PASSPHRASE,
-    })
-      .addOperation(
-        contract.call(
-          "get_merchant_revenue",
-          addressVal(merchant)
+      const tx = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: NETWORK_PASSPHRASE,
+      })
+        .addOperation(
+          contract.call(
+            "get_merchant_revenue",
+            addressVal(merchant)
+          )
         )
-      )
-      .setTimeout(30)
-      .build();
+        .setTimeout(30)
+        .build();
 
-    const result = await server.simulateTransaction(tx);
-    if ("error" in result) return 0n;
+      const result = await server.simulateTransaction(tx);
+      if ("error" in result) return 0n;
 
     const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
     if (!retval) return 0n;
@@ -526,6 +602,14 @@ export async function getMerchantRevenue(merchant: string): Promise<bigint> {
   } catch {
     return 0n;
   }
+      const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+      if (!retval || retval.switch().name === "scvVoid") return 0n;
+
+      return BigInt(retval.i128().toString());
+    } catch {
+      return 0n;
+    }
+  });
 }
 
 export async function getBalance(publicKey: string): Promise<string> {
@@ -540,29 +624,30 @@ export async function getBalance(publicKey: string): Promise<string> {
   }
 }
 
-export async function getAllowance(owner: string, tokenId = TOKEN_CONTRACT_ID): Promise<bigint> {
-  if (!tokenId) throw new Error("VITE_TOKEN_CONTRACT_ID is not configured.");
+export function getAllowance(owner: string, tokenId = TOKEN_CONTRACT_ID): Promise<bigint> {
+  if (!tokenId) return Promise.reject(new Error("VITE_TOKEN_CONTRACT_ID is not configured."));
 
-  try {
-    const tokenContract = new Contract(tokenId);
-    const account = await server.getAccount(owner);
+  return dedupedCall(`getAllowance:${owner}:${tokenId}`, async () => {
+    try {
+      const tokenContract = new Contract(tokenId);
+      const account = await server.getAccount(owner);
 
-    const tx = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: NETWORK_PASSPHRASE,
-    })
-      .addOperation(
-        tokenContract.call(
-          "allowance",
-          addressVal(owner),
-          nativeToScVal(CONTRACT_ID, { type: "address" })
+      const tx = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: NETWORK_PASSPHRASE,
+      })
+        .addOperation(
+          tokenContract.call(
+            "allowance",
+            addressVal(owner),
+            nativeToScVal(CONTRACT_ID, { type: "address" })
+          )
         )
-      )
-      .setTimeout(30)
-      .build();
+        .setTimeout(30)
+        .build();
 
-    const result = await server.simulateTransaction(tx);
-    if ("error" in result) return 0n;
+      const result = await server.simulateTransaction(tx);
+      if ("error" in result) return 0n;
 
     const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
     if (!retval) return 0n;
@@ -575,6 +660,14 @@ export async function getAllowance(owner: string, tokenId = TOKEN_CONTRACT_ID): 
   } catch {
     return 0n;
   }
+      const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+      if (!retval || retval.switch().name === "scvVoid") return 0n;
+
+      return BigInt(retval.i128().toString());
+    } catch {
+      return 0n;
+    }
+  });
 }
 
 // ── Event Fetching ────────────────────────────────────────────────────────────
