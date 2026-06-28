@@ -16,4 +16,16 @@
     "typeRoots": ["../frontend/node_modules/@types"]
   },
   "include": ["."]
+    "lib": ["ES2020"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "types": ["node"],
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["*.ts"]
 }
