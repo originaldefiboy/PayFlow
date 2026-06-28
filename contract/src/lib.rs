@@ -62,6 +62,7 @@ pub enum DataKey {
     // Feature: daily spending limits (temporary storage)
     DailyLimit(Address),
     DailySpent(Address),
+    DayStart(Address),
     // Feature: referral tracking
     Referral(Address),
     // Feature: state migration
