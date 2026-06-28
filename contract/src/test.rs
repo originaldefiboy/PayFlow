@@ -167,6 +167,7 @@ fn test_charge_applies_protocol_fee_and_records_net_revenue() {
         storage::set_admin(&env, &admin);
     });
     client.propose_fee(&collector, &500);
+    client.commit_fee();
     client.commit_fee(); // 5%
 
     let amount: i128 = 10_0000000;
@@ -745,6 +746,7 @@ fn test_pay_per_use_applies_protocol_fee_and_records_net_revenue() {
         storage::set_admin(&env, &admin);
     });
     client.propose_fee(&collector, &250);
+    client.commit_fee();
     client.commit_fee(); // 2.5%
 
     client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
@@ -1345,6 +1347,7 @@ fn test_batch_charge_with_fee() {
 
     let collector = Address::generate(&env);
     let fee_bps: u32 = 100; // 1%
+    client.propose_fee(&collector, &100);
     client.propose_fee(&collector, &fee_bps);
     client.commit_fee();
 
@@ -1973,6 +1976,7 @@ fn test_grace_period_ttl_extension() {
 
     // Set a grace period as admin and verify read returns the same value.
     let seconds: u64 = 3600;
+    client.propose_grace_period(&3600);
     client.propose_grace_period(&seconds);
     client.commit_grace_period();
     let got = client.get_grace_period();
@@ -3222,6 +3226,8 @@ fn test_set_grace_period_emits_event() {
     let (_, topics, data) = events.get(events.len() - 1).unwrap();
     let topic_symbol: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
     let emitted_seconds: u64 = data.try_into_val(&env).unwrap();
+
+    assert_eq!(topic_symbol, Symbol::new(&env, "grace_period_committed"));
     assert_eq!(emitted_seconds, 7200u64);
 }
 
@@ -3240,6 +3246,7 @@ fn test_charge_within_grace_window_succeeds() {
 
     let grace_period: u64 = 86400;
     let interval: u64 = 86400;
+    client.propose_grace_period(&86400);
     client.propose_grace_period(&grace_period);
     client.commit_grace_period();
     client.subscribe(
@@ -3275,6 +3282,7 @@ fn test_charge_after_grace_window_panics() {
 
     let grace_period: u64 = 86400;
     let interval: u64 = 86400;
+    client.propose_grace_period(&86400);
     client.propose_grace_period(&grace_period);
     client.commit_grace_period();
     client.subscribe(
@@ -3307,6 +3315,7 @@ fn test_non_admin_set_grace_period_panics() {
 
     env.set_auths(&[]);
 
+    client.propose_grace_period(&86400);
     client.propose_grace_period(&3600);
     client.commit_grace_period();
 }

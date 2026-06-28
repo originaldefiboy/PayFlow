@@ -89,6 +89,8 @@ pub enum DataKey {
     PendingFee,
     // Two-step auth for grace period
     PendingGracePeriod,
+    // Two-step auth for upgrade
+    PendingUpgrade,
     // Feature: pause expiry (bounded pause with auto-resume)
     PauseExpiry(Address),
 }
@@ -582,9 +584,28 @@ impl FlowPay {
         storage::get_token(&env)
     }
 
-    /// Upgrades the current contract WASM to `new_wasm_hash`.
+    /// Upgrades the current contract WASM to `new_wasm_hash` (test only).
+    #[cfg(test)]
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
         upgrade::upgrade(&env, new_wasm_hash);
+    }
+
+    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        upgrade::propose_upgrade(&env, new_wasm_hash);
+    }
+
+    pub fn commit_upgrade(env: Env) {
+        upgrade::commit_upgrade(&env);
+    }
+
+    pub fn clear_fee(env: Env) {
+        admin::require_admin(&env);
+        fee::clear_fee(&env);
+        events::publish_fee_cleared(&env);
+    }
+
+    pub fn get_fee_collector(env: Env) -> Option<Address> {
+        fee::get_fee_collector(&env)
     }
 
     pub fn get_subscription(env: Env, user: Address) -> Option<Subscription> {

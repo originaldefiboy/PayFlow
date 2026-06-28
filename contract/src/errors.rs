@@ -52,6 +52,8 @@ pub enum ContractError {
     MerchantFrozen = 22,
     /// Returned when a two-step commit is attempted without a pending proposal
     NoPendingProposal = 23,
+    /// Returned when the fee collector address is invalid (e.g. the contract's own address)
+    InvalidFeeCollector = 24,
     /// Returned when pause_until expiry_timestamp is not strictly in the future
     InvalidPauseExpiry = 24,
 }

@@ -78,6 +78,11 @@ pub fn publish_upgraded(env: &Env, _new_wasm_hash: &BytesN<32>) {
         .publish((Symbol::new(env, "upgrade"),), ());
 }
 
+pub fn publish_upgrade_proposed(env: &Env, new_wasm_hash: &BytesN<32>) {
+    env.events()
+        .publish((Symbol::new(env, "upg_proposed"),), new_wasm_hash.clone());
+}
+
 pub fn publish_contract_paused(env: &Env) {
     env.events()
         .publish((Symbol::new(env, "contract_paused"),), ());
@@ -120,6 +125,11 @@ pub fn publish_fee_proposed(env: &Env, collector: &Address, bps: u32) {
 pub fn publish_fee_committed(env: &Env, collector: &Address, bps: u32) {
     env.events()
         .publish((Symbol::new(env, "fee_committed"),), (collector.clone(), bps));
+}
+
+pub fn publish_fee_cleared(env: &Env) {
+    env.events()
+        .publish((Symbol::new(env, "fee_cleared"),), ());
 }
 
 pub fn publish_merchant_added(env: &Env, merchant: &Address) {
