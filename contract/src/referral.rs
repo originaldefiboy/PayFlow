@@ -1,6 +1,6 @@
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{Address, Env};
 
-use crate::DataKey;
+use crate::{errors::ContractError, events, DataKey, SUBSCRIPTION_TTL_LEDGERS};
 
 /// Returns the referrer for a given subscriber, if one was recorded.
 pub fn get_referrer(env: &Env, user: &Address) -> Option<Address> {
@@ -9,14 +9,29 @@ pub fn get_referrer(env: &Env, user: &Address) -> Option<Address> {
         .get(&DataKey::Referral(user.clone()))
 }
 
-/// Stores the referrer for a subscriber. No-op if referrer is None.
+/// Stores the referrer for a subscriber. Clears any prior referrer when `None`.
 pub fn store_referral(env: &Env, user: &Address, referrer: &Option<Address>) {
+    let key = DataKey::Referral(user.clone());
     if let Some(ref r) = referrer {
-        env.storage()
-            .persistent()
-            .set(&DataKey::Referral(user.clone()), r);
+        if r == user {
+            env.panic_with_error(ContractError::SelfReferral);
+        }
+        env.storage().persistent().set(&key, r);
+        env.storage().persistent().extend_ttl(
+            &key,
+            SUBSCRIPTION_TTL_LEDGERS,
+            SUBSCRIPTION_TTL_LEDGERS,
+        );
 
-        env.events()
-            .publish((Symbol::new(env, "referred"), user.clone()), r.clone());
+        events::publish_referred(env, user, r);
+    } else {
+        env.storage().persistent().remove(&key);
     }
+}
+
+/// Removes the referral entry for a subscriber, if one exists.
+/// Safe to call even when no referral was ever recorded.
+pub fn remove_referral(env: &Env, user: &Address) {
+    let key = DataKey::Referral(user.clone());
+    env.storage().persistent().remove(&key);
 }
