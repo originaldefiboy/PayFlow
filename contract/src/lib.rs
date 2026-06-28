@@ -100,7 +100,7 @@ pub const SUBSCRIPTION_TTL_LEDGERS: u32 = 6307200; // ~1 year (assuming 5s block
 pub const GLOBAL_MAX_VOLUME_PER_HOUR: i128 = 50_000_000_000_000; // 50 trillion stroops
 pub const HOUR_IN_SECONDS: u64 = 3600;
 pub const MAX_AMOUNT: i128 = 100_000_000_000;
-pub const MAX_SUBSCRIPTION_AMOUNT: i128 = 1_000_000_0000000;
+pub const MAX_SUBSCRIPTION_AMOUNT: i128 = 100_000_000_000_000;
 
 // ─────────────────────────────────────────────────────────────
 // Data types
@@ -377,7 +377,6 @@ impl FlowPay {
         );
 
         check_and_update_global_volume(&env, amount);
-        merchant_stats::increment_revenue(&env, &sub.merchant, amount);
         merchant_stats::increment_revenue_with_daily(&env, &sub.merchant, merchant_amount);
         spending_limit::record_spend(&env, &user, amount);
 
@@ -636,14 +635,12 @@ impl FlowPay {
     /// Proposes a new contract-wide grace period for charges.
     /// Only the contract admin can call this.
     pub fn propose_grace_period(env: Env, seconds: u64) {
-        admin::require_admin(&env);
         grace::propose_grace_period(&env, seconds);
     }
 
     /// Commits a pending contract-wide grace period proposal.
     /// Only the contract admin can call this.
     pub fn commit_grace_period(env: Env) {
-        admin::require_admin(&env);
         grace::commit_grace_period(&env);
     }
 
@@ -835,14 +832,12 @@ impl FlowPay {
     /// Proposes new protocol fee collection settings.
     /// Only the contract admin can call this.
     pub fn propose_fee(env: Env, collector: Address, bps: u32) {
-        admin::require_admin(&env);
         fee::propose_fee(&env, collector, bps);
     }
 
     /// Commits pending protocol fee collection settings.
     /// Only the contract admin can call this.
     pub fn commit_fee(env: Env) {
-        admin::require_admin(&env);
         fee::commit_fee(&env);
     }
 
@@ -1266,6 +1261,10 @@ fn subscribe_inner(
         }
     }
 
+    if whitelist::is_frozen(env, &merchant) {
+        env.panic_with_error(ContractError::MerchantFrozen);
+    }
+
     // Prevent new subscriptions when contract is paused
     let paused = env
         .storage()
@@ -1276,12 +1275,22 @@ fn subscribe_inner(
         env.panic_with_error(ContractError::ContractPausedError);
     }
 
-    assert!(amount > 0, "amount must be positive");
-    assert!(interval > 0, "interval must be positive");
+    validation::require_valid_amount(env, amount);
 
-    let token_client = token::Client::new(env, &token);
-    let allowance = token_client.allowance(&user, &env.current_contract_address());
-    assert!(allowance >= amount, "insufficient allowance");
+    if interval < 60 {
+        env.panic_with_error(ContractError::IntervalTooShort);
+    }
+
+    if interval < min_interval::get_min_interval(env) {
+        env.panic_with_error(ContractError::IntervalTooShort);
+    }
+
+    use soroban_sdk::xdr::ToXdr;
+    if token.clone().to_xdr(env).get(7) == Some(0) {
+        env.panic_with_error(ContractError::InvalidTokenAddress);
+    }
+
+    validation::check_allowance(env, &user, &token, amount);
 
     let now = env.ledger().timestamp();
     let last_charged = match trial_period {
@@ -1322,7 +1331,7 @@ fn subscribe_inner(
     events::publish_subscribed(env, &user, &sub);
 }
 
-fn check_and_update_global_volume(env: &Env, amount: i128) {
+pub(crate) fn check_and_update_global_volume(env: &Env, amount: i128) {
     let now = env.ledger().timestamp();
     let mut window: GlobalVolumeWindow = env
         .storage()

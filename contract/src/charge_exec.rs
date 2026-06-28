@@ -73,6 +73,7 @@ pub fn execute_charge(
     let fee_amount = fee::transfer_subscription_charge(env, user, sub);
     let net = sub.amount - fee_amount;
 
+    crate::check_and_update_global_volume(env, sub.amount);
     merchant_stats::increment_revenue_with_daily(env, &sub.merchant, net);
 
     sub.last_charged = now;
