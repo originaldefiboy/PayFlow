@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { buildCancelTx, buildPayPerUseTx } from "../stellar";
 import { friendlyError } from "../utils/errors";
 import SubscriptionCard from "./SubscriptionCard";
@@ -64,7 +64,7 @@ export default function Dashboard({ userKey, onSign, refreshTrigger, announce, o
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [sub?.active]);
 
-  async function handlePayPerUse(stroops: bigint) {
+  const handlePayPerUse = useCallback(async (stroops: bigint) => {
     announce("Transaction submitted");
     try {
       const hash = await ppuTx.submit(async () => {
@@ -79,7 +79,7 @@ export default function Dashboard({ userKey, onSign, refreshTrigger, announce, o
       addToast(msg, "error");
       announce(msg);
     }
-  }
+  }, [userKey, onSign, announce, addToast, onPayPerUse, ppuTx]);
 
   if (loading)
     return (
