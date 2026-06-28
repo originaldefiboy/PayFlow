@@ -87,6 +87,11 @@ pub fn publish_upgraded(env: &Env, _new_wasm_hash: &BytesN<32>) {
     env.events().publish((Symbol::new(env, "upgrade"),), ());
 }
 
+pub fn publish_upgrade_proposed(env: &Env, new_wasm_hash: &BytesN<32>) {
+    env.events()
+        .publish((Symbol::new(env, "upg_proposed"),), new_wasm_hash.clone());
+}
+
 pub fn publish_contract_paused(env: &Env) {
     env.events()
         .publish((Symbol::new(env, "contract_paused"),), ());
@@ -107,6 +112,10 @@ pub fn publish_daily_limit_removed(env: &Env, user: &Address) {
         .publish((Symbol::new(env, "daily_limit_removed"), user.clone()), ());
 }
 
+pub fn publish_fee_cleared(env: &Env) {
+    env.events()
+        .publish((Symbol::new(env, "fee_cleared"),), ());
+}
 pub fn publish_subscription_amount_updated(
     env: &Env,
     user: &Address,
@@ -196,4 +205,9 @@ pub fn publish_grace_period_proposed(env: &Env, seconds: u64) {
 pub fn publish_grace_period_committed(env: &Env, seconds: u64) {
     env.events()
         .publish((Symbol::new(env, "grace_period_committed"),), seconds);
+}
+
+pub fn publish_subscription_auto_resumed(env: &Env, user: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "subscription_auto_resumed"), user.clone()), ());
 }

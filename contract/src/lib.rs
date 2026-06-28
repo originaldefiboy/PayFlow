@@ -4,6 +4,7 @@
 mod admin;
 mod batch;
 #[cfg(test)]
+use soroban_sdk::testutils::storage::Instance;
 mod bench;
 mod charge_exec;
 mod errors;
@@ -62,6 +63,7 @@ pub enum DataKey {
     // Feature: daily spending limits (temporary storage)
     DailyLimit(Address),
     DailySpent(Address),
+    DayStart(Address),
     // Feature: referral tracking
     Referral(Address),
     // Feature: state migration
@@ -89,6 +91,10 @@ pub enum DataKey {
     PendingFee,
     // Two-step auth for grace period
     PendingGracePeriod,
+    // Two-step auth for upgrade
+    PendingUpgrade,
+    // Feature: pause expiry (bounded pause with auto-resume)
+    PauseExpiry(Address),
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -100,7 +106,11 @@ pub const MAX_BATCH_PAUSE_SUBSCRIPTIONS: u32 = 25;
 pub const GLOBAL_MAX_VOLUME_PER_HOUR: i128 = 50_000_000_000_000; // 50 trillion stroops
 pub const HOUR_IN_SECONDS: u64 = 3600;
 pub const MAX_AMOUNT: i128 = 100_000_000_000;
+<<<<<<< HEAD
 pub const MAX_SUBSCRIPTION_AMOUNT: i128 = 10_000_000_000_000;
+=======
+pub const MAX_SUBSCRIPTION_AMOUNT: i128 = 100_000_000_000_000;
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
 
 // ─────────────────────────────────────────────────────────────
 // Data types
@@ -210,6 +220,7 @@ impl FlowPay {
         trial_period: Option<u64>,
         referrer: Option<Address>,
     ) {
+<<<<<<< HEAD
         subscribe_inner(
             &env,
             user,
@@ -220,6 +231,71 @@ impl FlowPay {
             trial_period,
             referrer,
         );
+    }
+=======
+        ensure_contract_not_paused(&env);
+        user.require_auth();
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
+
+        if whitelist::is_whitelist_enabled(&env) {
+            if !whitelist::is_whitelisted(&env, &merchant) {
+                env.panic_with_error(ContractError::MerchantNotWhitelisted);
+            }
+        }
+
+        if whitelist::is_frozen(&env, &merchant) {
+            env.panic_with_error(ContractError::MerchantFrozen);
+        }
+        if interval < 60 {
+            env.panic_with_error(ContractError::IntervalMustBePositive);
+        }
+
+        use soroban_sdk::xdr::ToXdr;
+        if token.clone().to_xdr(&env).get(7) == Some(0) {
+            env.panic_with_error(ContractError::InvalidTokenAddress);
+        }
+
+        validation::check_allowance(&env, &user, &token, amount);
+        if interval < 60 {
+            env.panic_with_error(ContractError::IntervalTooShort);
+        }
+
+        if interval < min_interval::get_min_interval(&env) {
+            env.panic_with_error(ContractError::IntervalTooShort);
+        }
+
+        let token_client = token::Client::new(&env, &token);
+        let allowance = token_client.allowance(&user, &env.current_contract_address());
+        if allowance < amount {
+            env.panic_with_error(ContractError::InsufficientAllowance);
+        }
+
+        let now = env.ledger().timestamp();
+        let trial_duration = trial_period.unwrap_or(0);
+        let last_charged = now + trial_duration;
+
+        let existing = storage::get_subscription(&env, &user);
+        let should_increment = existing.as_ref().map_or(true, |s| !s.active);
+
+        let sub = Subscription {
+            merchant,
+            amount,
+            interval,
+            last_charged,
+            active: true,
+            paused: false,
+            token,
+            referrer: referrer.clone(),
+            label: Symbol::new(&env, "default"),
+            trial_duration,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Subscription(user.clone()), &sub);
+
+        extend_subscription_ttl(&env, &user);
+        subscribe_inner(&env, user, merchant, amount, interval, token, trial_period, referrer);
     }
 
     pub fn subscribe_with_metadata(
@@ -236,16 +312,77 @@ impl FlowPay {
         if label.len() > 64 {
             env.panic_with_error(ContractError::MetadataLabelTooLong);
         }
+<<<<<<< HEAD
         subscribe_inner(
             &env,
             user.clone(),
+=======
+        subscribe_inner(&env, user.clone(), merchant, amount, interval, token, trial_period, referrer);
+        subscription_metadata::set_metadata(&env, &user, label);
+
+        if whitelist::is_frozen(&env, &merchant) {
+            env.panic_with_error(ContractError::MerchantFrozen);
+        }
+
+        validation::require_valid_amount(&env, amount);
+        if interval == 0 {
+            env.panic_with_error(ContractError::IntervalMustBePositive);
+        }
+
+        use soroban_sdk::xdr::ToXdr;
+        if token.clone().to_xdr(&env).get(7) == Some(0) {
+            env.panic_with_error(ContractError::InvalidTokenAddress);
+        }
+
+        validation::check_allowance(&env, &user, &token, amount);
+
+        if interval < min_interval::get_min_interval(&env) {
+            env.panic_with_error(ContractError::IntervalTooShort);
+        }
+
+        let token_client = token::Client::new(&env, &token);
+        let allowance = token_client.allowance(&user, &env.current_contract_address());
+        if allowance < amount {
+            env.panic_with_error(ContractError::InsufficientAllowance);
+        }
+
+        let now = env.ledger().timestamp();
+        let trial_duration = trial_period.unwrap_or(0);
+        let last_charged = now + trial_duration;
+
+        let existing = storage::get_subscription(&env, &user);
+        let should_increment = existing.as_ref().map_or(true, |s| !s.active);
+
+        let sub = Subscription {
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
             merchant,
             amount,
             interval,
             token,
+<<<<<<< HEAD
             trial_period,
             referrer,
         );
+=======
+            referrer: referrer.clone(),
+            label: Symbol::new(&env, ""), // deprecated: use SubscriptionMeta storage instead
+            trial_duration,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Subscription(user.clone()), &sub);
+
+        extend_subscription_ttl(&env, &user);
+
+        if should_increment {
+            subscription_count::increment(&env);
+            subscription_count::append_subscriber_index(&env, &user);
+        }
+        referral::store_referral(&env, &user, &referrer);
+        merchant_stats::increment_subscriber_count(&env, &sub.merchant);
+        events::publish_subscribed(&env, &user, &sub);
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
         let _ = subscription_metadata::set_metadata(&env, &user, label);
     }
 
@@ -286,13 +423,18 @@ impl FlowPay {
             .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         if !sub.active {
-            env.panic_with_error(ContractError::SubscriptionNotActive);
-        }
-        if sub.paused {
-            env.panic_with_error(ContractError::SubscriptionPaused);
+            env.panic_with_error(ContractError::SubscriptionInactive);
         }
 
         let now = env.ledger().timestamp();
+
+        if sub.paused {
+            if charge_exec::try_auto_resume(&env, &user, &mut sub, now) {
+                // Auto-resumed; fall through to charge immediately
+            } else {
+                env.panic_with_error(ContractError::SubscriptionPaused);
+            }
+        }
 
         let next = charge_exec::compute_next_charge_at(&sub)
             .unwrap_or_else(|| env.panic_with_error(ContractError::SubscriptionPaused));
@@ -311,6 +453,13 @@ impl FlowPay {
     }
 
     pub fn extend_subscription_ttl(env: Env, user: Address) {
+        extend_subscription_ttl(&env, &user);
+    }
+
+    /// Permissionlessly refreshes the TTL of any subscription entry.
+    /// Returns early (no-op) if no subscription exists for `user`.
+    /// No auth required — safe for keeper bots to call for dormant subscribers.
+    pub fn bump_subscription(env: Env, user: Address) {
         extend_subscription_ttl(&env, &user);
     }
 
@@ -359,7 +508,7 @@ impl FlowPay {
             .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         if !sub.active {
-            env.panic_with_error(ContractError::SubscriptionNotActive);
+            env.panic_with_error(ContractError::SubscriptionInactive);
         }
         if sub.paused {
             env.panic_with_error(ContractError::SubscriptionPaused);
@@ -393,6 +542,7 @@ impl FlowPay {
         check_and_update_global_volume(&env, amount);
         merchant_stats::increment_revenue_with_daily(&env, &sub.merchant, merchant_amount);
         spending_limit::record_spend(&env, &user, amount);
+        extend_subscription_ttl(&env, &user);
 
         events::publish_pay_per_use(&env, &user, &sub.merchant, amount);
     }
@@ -428,11 +578,12 @@ impl FlowPay {
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         sub.active = false;
 
         env.storage().persistent().set(&key, &sub);
+        extend_subscription_ttl(&env, &user);
 
         subscription_count::decrement(&env);
         merchant_stats::decrement_subscriber_count(&env, &sub.merchant);
@@ -473,12 +624,45 @@ impl FlowPay {
             .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         if !sub.active {
+            env.panic_with_error(ContractError::SubscriptionInactive);
+        }
+
+        sub.paused = true;
+
+        env.storage().persistent().set(&key, &sub);
+        extend_subscription_ttl(&env, &user);
+        storage::set_pause_expiry(&env, &user, u64::MAX);
+
+        events::publish_paused(&env, &user);
+    }
+
+    /// Pauses `user`'s subscription until a specific expiry timestamp.
+    /// The subscription will auto-resume via `charge` or `batch_charge`
+    /// when the ledger timestamp reaches `expiry`.
+    pub fn pause_until(env: Env, user: Address, expiry: u64) {
+        user.require_auth();
+
+        let now = env.ledger().timestamp();
+        if expiry <= now {
+            env.panic_with_error(ContractError::InvalidPauseExpiry);
+        }
+
+        let key = DataKey::Subscription(user.clone());
+
+        let mut sub: Subscription = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
+
+        if !sub.active {
             env.panic_with_error(ContractError::SubscriptionNotActive);
         }
 
         sub.paused = true;
 
         env.storage().persistent().set(&key, &sub);
+        storage::set_pause_expiry(&env, &user, expiry);
 
         events::publish_paused(&env, &user);
     }
@@ -516,12 +700,14 @@ impl FlowPay {
             .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         if !sub.active {
-            env.panic_with_error(ContractError::SubscriptionNotActive);
+            env.panic_with_error(ContractError::SubscriptionInactive);
         }
 
         sub.paused = false;
 
         env.storage().persistent().set(&key, &sub);
+        extend_subscription_ttl(&env, &user);
+        storage::clear_pause_expiry(&env, &user);
 
         events::publish_resumed(&env, &user);
     }
@@ -614,9 +800,28 @@ impl FlowPay {
         storage::get_token(&env)
     }
 
-    /// Upgrades the current contract WASM to `new_wasm_hash`.
+    /// Upgrades the current contract WASM to `new_wasm_hash` (test only).
+    #[cfg(test)]
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
         upgrade::upgrade(&env, new_wasm_hash);
+    }
+
+    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        upgrade::propose_upgrade(&env, new_wasm_hash);
+    }
+
+    pub fn commit_upgrade(env: Env) {
+        upgrade::commit_upgrade(&env);
+    }
+
+    pub fn clear_fee(env: Env) {
+        admin::require_admin(&env);
+        fee::clear_fee(&env);
+        events::publish_fee_cleared(&env);
+    }
+
+    pub fn get_fee_collector(env: Env) -> Option<Address> {
+        fee::get_fee_collector(&env)
     }
 
     pub fn get_subscription(env: Env, user: Address) -> Option<Subscription> {
@@ -794,6 +999,8 @@ impl FlowPay {
     pub fn get_min_interval(env: Env) -> u64 {
         min_interval::get_min_interval(&env)
     }
+
+
 
     /// Adds a merchant to the whitelist.
     pub fn add_merchant(env: Env, merchant: Address) {
@@ -1143,6 +1350,7 @@ impl FlowPay {
     // Contract pause
     // ─────────────────────────────────────────────────────────────
 
+   
     /// Pauses the contract. Only the admin can call this.
     pub fn pause_contract(env: Env) {
         admin::require_admin(&env);
@@ -1155,6 +1363,17 @@ impl FlowPay {
         admin::require_admin(&env);
         storage::set_contract_paused(&env, false);
         events::publish_contract_unpaused(&env);
+    }
+
+    // Admin setup
+    // ─────────────────────────────────────────────────────────────
+
+    /// Sets the contract admin. Can only be called once; subsequent calls panic.
+    pub fn set_initial_admin(env: Env, admin: Address) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic!("admin already set");
+        }
+        storage::set_admin(&env, &admin);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1178,6 +1397,11 @@ impl FlowPay {
         let contract_paused = storage::is_contract_paused(&env);
         let token_configured = storage::get_token(&env).is_some();
         let admin_configured = storage::get_admin_optional(&env).is_some();
+        #[cfg(test)]
+        let instance_ttl_ledgers: u32 = env.storage().instance().get_ttl();
+        #[cfg(not(test))]
+        let instance_ttl_ledgers: u32 = 0;
+        let instance_ttl_ledgers = env.storage().max_ttl();
 
         #[cfg(any(test, feature = "testutils"))]
         let instance_ttl_ledgers = {
@@ -1271,6 +1495,7 @@ impl FlowPay {
 }
 
 fn extend_subscription_ttl(env: &Env, user: &Address) {
+<<<<<<< HEAD
     env.storage().persistent().extend_ttl(
         &DataKey::Subscription(user.clone()),
         SUBSCRIPTION_TTL_LEDGERS,
@@ -1279,6 +1504,10 @@ fn extend_subscription_ttl(env: &Env, user: &Address) {
     env.storage()
         .instance()
         .extend_ttl(SUBSCRIPTION_TTL_LEDGERS, SUBSCRIPTION_TTL_LEDGERS);
+=======
+    storage::extend_subscription_ttl(env, user);
+    env.storage().instance().extend_ttl(SUBSCRIPTION_TTL_LEDGERS, SUBSCRIPTION_TTL_LEDGERS);
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
 }
 
 fn subscribe_inner(
@@ -1297,6 +1526,14 @@ fn subscribe_inner(
         env.panic_with_error(ContractError::MerchantNotWhitelisted);
     }
 
+<<<<<<< HEAD
+=======
+    if whitelist::is_frozen(env, &merchant) {
+        env.panic_with_error(ContractError::MerchantFrozen);
+    }
+
+    // Prevent new subscriptions when contract is paused
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     let paused = env
         .storage()
         .instance()
@@ -1306,6 +1543,7 @@ fn subscribe_inner(
         env.panic_with_error(ContractError::ContractPausedError);
     }
 
+<<<<<<< HEAD
     if whitelist::is_frozen(env, &merchant) {
         env.panic_with_error(ContractError::MerchantFrozen);
     }
@@ -1334,6 +1572,24 @@ fn subscribe_inner(
     if allowance < amount {
         env.panic_with_error(ContractError::InsufficientAllowance);
     }
+=======
+    validation::require_valid_amount(env, amount);
+
+    if interval < 60 {
+        env.panic_with_error(ContractError::IntervalTooShort);
+    }
+
+    if interval < min_interval::get_min_interval(env) {
+        env.panic_with_error(ContractError::IntervalTooShort);
+    }
+
+    use soroban_sdk::xdr::ToXdr;
+    if token.clone().to_xdr(env).get(7) == Some(0) {
+        env.panic_with_error(ContractError::InvalidTokenAddress);
+    }
+
+    validation::check_allowance(env, &user, &token, amount);
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
 
     let now = env.ledger().timestamp();
     let trial_duration = trial_period.unwrap_or(0);
@@ -1348,6 +1604,8 @@ fn subscribe_inner(
         }
     }
 
+    let trial_duration = trial_period.unwrap_or(0);
+
     let sub = Subscription {
         merchant,
         amount,
@@ -1361,6 +1619,12 @@ fn subscribe_inner(
         trial_duration,
     };
 
+<<<<<<< HEAD
+=======
+    let existing = storage::get_subscription(env, &user);
+    let should_increment = existing.as_ref().map_or(true, |s| !s.active);
+
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     env.storage()
         .persistent()
         .set(&DataKey::Subscription(user.clone()), &sub);
@@ -1376,7 +1640,11 @@ fn subscribe_inner(
     events::publish_subscribed(env, &user, &sub);
 }
 
+<<<<<<< HEAD
 fn check_and_update_global_volume(env: &Env, amount: i128) {
+=======
+pub(crate) fn check_and_update_global_volume(env: &Env, amount: i128) {
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     let now = env.ledger().timestamp();
     let mut window: GlobalVolumeWindow = env
         .storage()
@@ -1406,6 +1674,10 @@ fn check_and_update_global_volume(env: &Env, amount: i128) {
         .instance()
         .set(&DataKey::GlobalVolumeWindow, &window);
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
 fn is_contract_paused(env: &Env) -> bool {
     env.storage()
         .instance()
