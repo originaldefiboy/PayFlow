@@ -1,4 +1,3 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { nativeToScVal, xdr, Address } from "@stellar/stellar-sdk";
 import { ScValDecoder, ScValDecodeError } from "../services/scval";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -62,19 +61,19 @@ describe("fetchEvents", () => {
   it("filters by event name correctly", async () => {
     const result = await fetchEvents("subscribed");
 
-    expect(result).toHaveLength(2);
-    expect(result[0].eventName).toBe("subscribed");
-    expect(result[0].address).toBe("user_A");
-    expect(result[1].address).toBe("user_B");
+    expect(result.events).toHaveLength(2);
+    expect(result.events[0].eventName).toBe("subscribed");
+    expect(result.events[0].address).toBe("user_A");
+    expect(result.events[1].address).toBe("user_B");
   });
 
   it("filters by address when provided", async () => {
     const result = await fetchEvents("subscribed", "user_A");
 
-    expect(result).toHaveLength(1);
-    expect(result[0].eventName).toBe("subscribed");
-    expect(result[0].address).toBe("user_A");
-    expect(result[0].data).toEqual({ amount: 1000 });
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].eventName).toBe("subscribed");
+    expect(result.events[0].address).toBe("user_A");
+    expect(result.events[0].data).toEqual({ amount: 1000 });
   });
 
   it("returns empty array on error", async () => {
@@ -84,7 +83,7 @@ describe("fetchEvents", () => {
     const result = await fetchEvents("subscribed");
 
     // The function's internal catch block should swallow the exception and output [] safely
-    expect(result).toEqual([]);
+    expect(result.events).toEqual([]);
   });
 });
 

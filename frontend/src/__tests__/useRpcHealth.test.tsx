@@ -146,31 +146,11 @@ describe("useRpcHealth", () => {
         mockNow += 100;
         return {} as any;
       });
-      expect(screen.getByTestId("error")).toHaveTextContent("Network error");
-
-      // Second call succeeds (polling will pick it up)
-      mockedServer.getHealth.mockResolvedValue({} as any);
-      rerender(<Test />);
-
-      // State is still false until polling fires — document current behavior
-      expect(screen.getByTestId("healthy")).toHaveTextContent("false");
-    });
-  });
-
-  describe("Initial State", () => {
-    it("calls server.getHealth on mount", async () => {
-      mockedServer.getHealth.mockResolvedValue({} as any);
-
-      render(<Test />);
 
       // Advance by 100ms (total 4s from the last failure) -> third check runs and succeeds
       await act(async () => {
         vi.advanceTimersByTime(100);
       });
-    });
-
-    it("calls server.getHealth at least once on mount", async () => {
-      mockedServer.getHealth.mockResolvedValue({} as any);
       expect(mockedServer.getHealth).toHaveBeenCalledTimes(3);
       expect(screen.getByTestId("status")).toHaveTextContent("healthy");
       expect(screen.getByTestId("latency")).toHaveTextContent("100");

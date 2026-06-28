@@ -268,8 +268,9 @@ export default function SubscriptionHistory({ userKey }: Props) {
         <div style={{ textAlign: "center", padding: "var(--space-4) 0" }}>
           <button onClick={loadMore} className="btn-secondary" disabled={loading}>
             Load more
-
-      {/* Pagination controls */}
+          </button>
+        </div>
+      )}
       {totalPages > 1 && (
         <div
           style={{

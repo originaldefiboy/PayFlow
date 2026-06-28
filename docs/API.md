@@ -1148,4 +1148,4 @@ All error conditions are returned as `ContractError` values. Client SDKs can dec
 | 9 | `GracePeriodElapsed` | The charge grace period has passed; the subscription cannot be charged. |
 | 10 | `MerchantNotWhitelisted` | The merchant is not on the whitelist (when whitelist is enabled). |
 | 11 | `ContractPaused` | The contract is paused; all user-facing write operations are blocked. |
-| 19 | `DailyLimitExceeded` | A `pay_per_use()` call would exceed the user's configured daily spending limit. |
+| 24 | `DailyLimitExceeded` | A `pay_per_use()` call would exceed the user's configured daily spending limit. |

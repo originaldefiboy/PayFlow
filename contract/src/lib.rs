@@ -243,20 +243,12 @@ impl FlowPay {
             env.panic_with_error(ContractError::IntervalMustBePositive);
         }
 
-        if amount <= 0 {
-            env.panic_with_error(ContractError::AmountMustBePositive);
-        }
-        if interval == 0 {
-            env.panic_with_error(ContractError::IntervalMustBePositive);
         use soroban_sdk::xdr::ToXdr;
         if token.clone().to_xdr(&env).get(7) == Some(0) {
             env.panic_with_error(ContractError::InvalidTokenAddress);
         }
 
         validation::check_allowance(&env, &user, &token, amount);
-        if interval < 60 {
-            env.panic_with_error(ContractError::IntervalTooShort);
-        }
 
         if interval < min_interval::get_min_interval(&env) {
             env.panic_with_error(ContractError::IntervalTooShort);
@@ -343,10 +335,6 @@ impl FlowPay {
             env.panic_with_error(ContractError::SubscriptionInactive);
         }
         if sub.paused {
-            env.panic_with_error(ContractError::SubscriptionInactive);
-            env.panic_with_error(ContractError::SubscriptionNotActive);
-        }
-        if sub.paused {
             env.panic_with_error(ContractError::SubscriptionPaused);
         }
 
@@ -364,25 +352,7 @@ impl FlowPay {
             env.panic_with_error(ContractError::GracePeriodElapsed);
         }
 
-        let token = token::Client::new(&env, &sub.token);
-
-        token.transfer_from(
-            &env.current_contract_address(),
-            &user,
-            &sub.merchant,
-            &sub.amount,
-        );
-
         check_and_update_global_volume(&env, sub.amount);
-        merchant_stats::increment_revenue(&env, &sub.merchant, sub.amount);
-
-        sub.last_charged = now;
-
-        env.storage().persistent().set(&key, &sub);
-        extend_subscription_ttl(&env, &user);
-
-        subscription_history::record_charge(&env, &user, now);
-        events::publish_charged(&env, &user, &sub, now);
         charge_exec::execute_charge(&env, &user, &key, &mut sub, now);
     }
 
@@ -443,10 +413,6 @@ impl FlowPay {
 
         if !sub.active {
             env.panic_with_error(ContractError::SubscriptionInactive);
-        }
-        if sub.paused {
-            env.panic_with_error(ContractError::SubscriptionInactive);
-            env.panic_with_error(ContractError::SubscriptionNotActive);
         }
         if sub.paused {
             env.panic_with_error(ContractError::SubscriptionPaused);
@@ -564,7 +530,6 @@ impl FlowPay {
 
         if !sub.active {
             env.panic_with_error(ContractError::SubscriptionInactive);
-            env.panic_with_error(ContractError::SubscriptionNotActive);
         }
 
         sub.paused = true;
@@ -609,7 +574,6 @@ impl FlowPay {
 
         if !sub.active {
             env.panic_with_error(ContractError::SubscriptionInactive);
-            env.panic_with_error(ContractError::SubscriptionNotActive);
         }
 
         sub.paused = false;
@@ -1351,11 +1315,6 @@ impl FlowPay {
 
 fn extend_subscription_ttl(env: &Env, user: &Address) {
     storage::extend_subscription_ttl(env, user);
-    env.storage().persistent().extend_ttl(
-        &DataKey::Subscription(user.clone()),
-        SUBSCRIPTION_TTL_LEDGERS,
-        SUBSCRIPTION_TTL_LEDGERS,
-    );
     env.storage().instance().extend_ttl(SUBSCRIPTION_TTL_LEDGERS, SUBSCRIPTION_TTL_LEDGERS);
 }
 

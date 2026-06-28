@@ -24,13 +24,6 @@ pub enum ContractError {
     GracePeriodElapsed = 9,
     /// Returned when a merchant is not whitelisted
     MerchantNotWhitelisted = 10,
-    /// Returned when the contract is paused and a user-facing operation is attempted
-    ContractPaused = 11,
-    /// Returned when a pay_per_use call would exceed the user's daily spending limit
-    DailyLimitExceeded = 19,
-    GlobalVolumeExceeded = 28,
-    MetadataLabelTooLong = 29,
-    ContractPausedError = 30,
     /// Returned when a user attempts to refer themselves
     SelfReferral = 11,
     /// Returned when the token address is not a contract
@@ -57,4 +50,8 @@ pub enum ContractError {
     MerchantFrozen = 22,
     /// Returned when a two-step commit is attempted without a pending proposal
     NoPendingProposal = 23,
+    /// Returned when a pay_per_use call would exceed the user's daily spending limit
+    DailyLimitExceeded = 24,
+    GlobalVolumeExceeded = 28,
+    ContractPausedError = 30,
 }

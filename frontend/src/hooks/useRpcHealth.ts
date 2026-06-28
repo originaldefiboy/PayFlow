@@ -8,12 +8,11 @@ function nextInterval(failures: number): number {
   return Math.min(POLL_INTERVAL_MS * Math.pow(2, failures - 1), 120_000);
 }
 
+export type RpcStatus = "healthy" | "degraded" | "unreachable";
+
 export interface UseRpcHealthResult {
   healthy: boolean;
   circuitOpen: boolean;
-export type RpcStatus = "healthy" | "degraded" | "unreachable";
-
-interface UseRpcHealthResult {
   status: RpcStatus;
   latencyMs: number | null;
   error: string | null;
@@ -30,24 +29,35 @@ export function useRpcHealth(): UseRpcHealthResult {
 
   useEffect(() => {
     let cancelled = false;
+    let currentDelay = 2000;
 
     async function check() {
+      const startTime = performance.now();
       try {
         await server.getHealth();
         if (cancelled) return;
+        const latency = Math.round(performance.now() - startTime);
         consecutiveFailures.current = 0;
+        currentDelay = 2000;
         setHealthy(true);
         setCircuitOpen(false);
+        setLatencyMs(latency);
+        setStatus(latency > 2000 ? "degraded" : "healthy");
         setError(null);
-        timerRef.current = setTimeout(check, POLL_INTERVAL_MS);
+        timerRef.current = setTimeout(check, 60000);
       } catch (e: unknown) {
         if (cancelled) return;
         consecutiveFailures.current += 1;
         const failures = consecutiveFailures.current;
+        const errMsg = e instanceof Error ? e.message : "RPC endpoint unreachable";
         setHealthy(false);
         setCircuitOpen(failures >= CIRCUIT_FAILURE_THRESHOLD);
-        setError(e instanceof Error ? e.message : "RPC endpoint unreachable");
-        timerRef.current = setTimeout(check, nextInterval(failures));
+        setStatus("unreachable");
+        setLatencyMs(null);
+        setError(errMsg);
+        const delayToUse = currentDelay;
+        currentDelay = Math.min(currentDelay * 2, 30000);
+        timerRef.current = setTimeout(check, delayToUse);
       }
     }
 
@@ -59,55 +69,5 @@ export function useRpcHealth(): UseRpcHealthResult {
     };
   }, []);
 
-  return { healthy, circuitOpen, error };
-    let isMounted = true;
-    let timerId: ReturnType<typeof setTimeout> | null = null;
-    let currentDelay = 2000;
-
-    async function checkHealth() {
-      const startTime = performance.now();
-      try {
-        await server.getHealth();
-        if (!isMounted) return;
-
-        const endTime = performance.now();
-        const latency = Math.round(endTime - startTime);
-
-        setLatencyMs(latency);
-        setStatus(latency > 2000 ? "degraded" : "healthy");
-        setError(null);
-
-        // Reset backoff sequence
-        currentDelay = 2000;
-
-        // Schedule next check in 60 seconds
-        timerId = setTimeout(checkHealth, 60000);
-      } catch (e: unknown) {
-        if (!isMounted) return;
-
-        setStatus("unreachable");
-        setError(e instanceof Error ? e.message : "RPC endpoint unreachable");
-        setLatencyMs(null);
-
-        const delayToUse = currentDelay;
-        // Capped at 30 seconds
-        currentDelay = Math.min(currentDelay * 2, 30000);
-
-        // Schedule retry
-        timerId = setTimeout(checkHealth, delayToUse);
-      }
-    }
-
-    checkHealth();
-
-    return () => {
-      isMounted = false;
-      if (timerId) {
-        clearTimeout(timerId);
-      }
-    };
-  }, []);
-
-  return { status, latencyMs, error };
+  return { healthy, circuitOpen, status, latencyMs, error };
 }
-

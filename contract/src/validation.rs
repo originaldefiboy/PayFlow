@@ -1,10 +1,3 @@
-use soroban_sdk::Env;
-use crate::errors::ContractError;
-
-pub fn require_positive_amount(env: &Env, amount: i128) {
-    if amount <= 0 {
-        env.panic_with_error(ContractError::AmountMustBePositive);
-    }
 use soroban_sdk::{token, Address, Env};
 
 use crate::errors::ContractError;
@@ -52,10 +45,6 @@ pub fn require_valid_interval(env: &Env, new_interval: u64) {
     }
 }
 
-pub fn require_positive_amount(amount: i128) {
-    assert!(amount > 0, "amount must be positive");
-}
-
 pub fn require_positive_interval(env: &Env, interval: u64) {
     if interval == 0 {
         env.panic_with_error(ContractError::IntervalMustBePositive);
@@ -71,63 +60,5 @@ pub fn require_active_subscription(env: &Env, active: bool) {
 pub fn require_charge_interval_elapsed(env: &Env, now: u64, last_charged: u64, interval: u64) {
     if now < last_charged + interval {
         env.panic_with_error(ContractError::IntervalNotElapsed);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_require_positive_amount_accepts_positive() {
-        require_positive_amount(1);
-        require_positive_amount(100);
-    }
-
-    #[test]
-    #[should_panic(expected = "amount must be positive")]
-    fn test_require_positive_amount_panics_on_zero() {
-        require_positive_amount(0);
-    }
-
-    #[test]
-    #[should_panic(expected = "amount must be positive")]
-    fn test_require_positive_amount_negative_signed() {
-        require_positive_amount(-5);
-    }
-
-    #[test]
-    fn test_require_positive_interval_accepts_positive() {
-        require_positive_interval(1);
-        require_positive_interval(60);
-    }
-
-    #[test]
-    #[should_panic(expected = "interval must be positive")]
-    fn test_require_positive_interval_panics_on_zero() {
-        require_positive_interval(0);
-    }
-
-    #[test]
-    fn test_require_active_subscription_accepts_true() {
-        require_active_subscription(true);
-    }
-
-    #[test]
-    #[should_panic(expected = "subscription is not active")]
-    fn test_require_active_subscription_panics_on_false() {
-        require_active_subscription(false);
-    }
-
-    #[test]
-    fn test_require_charge_interval_elapsed_accepts_elapsed_interval() {
-        require_charge_interval_elapsed(100, 40, 60);
-        require_charge_interval_elapsed(150, 40, 60);
-    }
-
-    #[test]
-    #[should_panic(expected = "interval not elapsed yet")]
-    fn test_require_charge_interval_elapsed_panics_if_too_early() {
-        require_charge_interval_elapsed(99, 40, 60);
     }
 }
