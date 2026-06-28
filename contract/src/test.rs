@@ -939,3 +939,207 @@ fn test_subscribe_overwrites_cancelled_subscription() {
     assert!(sub_new.active);
     assert_eq!(sub_new.amount, 2_0000000);
 }
+
+// ─────────────────────────────────────────────
+// CONTRACT-05: Pause expiry & auto-resume tests
+// ─────────────────────────────────────────────
+
+#[test]
+fn test_pause_sets_paused_true() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+    client.pause(&user);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(sub.paused);
+}
+
+#[test]
+#[should_panic(expected = "subscription is paused")]
+fn test_charge_on_paused_subscription_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+    client.pause(&user);
+
+    env.ledger().with_mut(|l| { l.timestamp += interval + 1; });
+    client.charge(&user);
+}
+
+#[test]
+fn test_pause_until_auto_resumes_on_charge() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    let amount: i128 = 1_0000000;
+    client.subscribe(&user, &merchant, &amount, &interval, &token_addr, &None, &None);
+
+    let start = env.ledger().timestamp();
+    let pause_expiry = start + 1000;
+
+    client.pause_until(&user, &pause_expiry);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(sub.paused);
+
+    // Advance ledger past both expiry and billing interval
+    let charge_time = start + interval + 1;
+    env.ledger().with_mut(|l| l.timestamp = charge_time);
+
+    // Charge should succeed and trigger auto-resume
+    client.charge(&user);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(!sub.paused, "subscription should be auto-resumed");
+    assert!(
+        sub.last_charged >= charge_time,
+        "last_charged should be advanced"
+    );
+
+    // Verify auto-resume event was emitted
+    let events = env.events().all();
+    let mut found_auto_resumed = false;
+    for i in 0..events.len() {
+        let (_, topics, _) = events.get(i).unwrap();
+        let topic_symbol: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+        if topic_symbol == Symbol::new(&env, "subscription_auto_resumed") {
+            found_auto_resumed = true;
+            break;
+        }
+    }
+    assert!(found_auto_resumed, "subscription_auto_resumed event must be emitted");
+}
+
+#[test]
+fn test_pause_until_auto_resume_clears_pause_expiry() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    let amount: i128 = 1_0000000;
+    client.subscribe(&user, &merchant, &amount, &interval, &token_addr, &None, &None);
+
+    let start = env.ledger().timestamp();
+    let pause_expiry = start + 1000;
+
+    client.pause_until(&user, &pause_expiry);
+
+    // Verify expiry is stored
+    let stored_expiry: Option<u64> = env.as_contract(&contract_id, || {
+        env.storage().persistent().get(&DataKey::PauseExpiry(user.clone()))
+    });
+    assert_eq!(stored_expiry, Some(pause_expiry));
+
+    // Advance past both expiry and interval
+    let charge_time = start + interval + 1;
+    env.ledger().with_mut(|l| l.timestamp = charge_time);
+    client.charge(&user);
+
+    // Verify expiry is cleared
+    let stored_expiry_after: Option<u64> = env.as_contract(&contract_id, || {
+        env.storage().persistent().get(&DataKey::PauseExpiry(user.clone()))
+    });
+    assert!(stored_expiry_after.is_none(), "PauseExpiry should be cleared after auto-resume");
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn test_pause_until_past_timestamp_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    let amount: i128 = 1_0000000;
+    client.subscribe(&user, &merchant, &amount, &interval, &token_addr, &None, &None);
+
+    let now = env.ledger().timestamp();
+    // Expiry equal to now — must panic
+    client.pause_until(&user, &now);
+}
+
+#[test]
+fn test_pause_sets_indefinite_expiry() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    let amount: i128 = 1_0000000;
+    client.subscribe(&user, &merchant, &amount, &interval, &token_addr, &None, &None);
+
+    // Use regular pause (should set PauseExpiry to u64::MAX)
+    client.pause(&user);
+
+    let stored_expiry: Option<u64> = env.as_contract(&contract_id, || {
+        env.storage().persistent().get(&DataKey::PauseExpiry(user.clone()))
+    });
+    assert_eq!(stored_expiry, Some(u64::MAX));
+}
+
+#[test]
+fn test_resume_clears_pause_expiry() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    let amount: i128 = 1_0000000;
+    client.subscribe(&user, &merchant, &amount, &interval, &token_addr, &None, &None);
+
+    let start = env.ledger().timestamp();
+    client.pause_until(&user, &(start + 1000));
+    client.resume(&user);
+
+    let stored_expiry: Option<u64> = env.as_contract(&contract_id, || {
+        env.storage().persistent().get(&DataKey::PauseExpiry(user.clone()))
+    });
+    assert!(stored_expiry.is_none(), "resume must clear PauseExpiry");
+}
+
+#[test]
+fn test_resume_unpauses_and_charge_succeeds() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+    client.pause(&user);
+    client.resume(&user);
+
+    env.ledger().with_mut(|l| { l.timestamp += interval + 1; });
+    client.charge(&user);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(sub.last_charged > 0);
+}
+
+#[test]
+fn test_batch_charge_auto_resumes_paused_subscription_past_expiry() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    let amount: i128 = 1_0000000;
+    client.subscribe(&user, &merchant, &amount, &interval, &token_addr, &None, &None);
+
+    let start = env.ledger().timestamp();
+    let pause_expiry = start + 1000;
+
+    client.pause_until(&user, &pause_expiry);
+
+    // Advance past both expiry and interval
+    let charge_time = start + interval + 1;
+    env.ledger().with_mut(|l| l.timestamp = charge_time);
+
+    let users = soroban_sdk::Vec::from_array(&env, [user.clone()]);
+    let results = client.batch_charge(&users);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results.get(0).unwrap(), crate::ChargeResult::Charged);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(!sub.paused, "batch charge should auto-resume");
+}

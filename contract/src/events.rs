@@ -52,3 +52,18 @@ pub fn publish_daily_limit_removed(env: &Env, user: &Address) {
     env.events()
         .publish((Symbol::new(env, "daily_limit_removed"), user.clone()), ());
 }
+
+pub fn publish_paused(env: &Env, user: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "paused"), user.clone()), ());
+}
+
+pub fn publish_resumed(env: &Env, user: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "resumed"), user.clone()), ());
+}
+
+pub fn publish_subscription_auto_resumed(env: &Env, user: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "subscription_auto_resumed"), user.clone()), ());
+}

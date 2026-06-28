@@ -65,6 +65,8 @@ pub enum DataKey {
     ChargeHistory(Address),
     // Feature: emergency contract pause
     ContractPaused,
+    // Feature: pause expiry (bounded pause)
+    PauseExpiry(Address),
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -229,9 +231,41 @@ impl FlowPay {
             .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         assert!(sub.active, "subscription is not active");
-        assert!(!sub.paused, "subscription is paused");
 
         let now = env.ledger().timestamp();
+
+        // Auto-resume if paused past expiry
+        if sub.paused {
+            let expiry = storage::get_pause_expiry(&env, &user);
+            if let Some(expiry_ts) = expiry {
+                if now >= expiry_ts {
+                    sub.paused = false;
+                    if now > sub.last_charged {
+                        sub.last_charged = now;
+                    }
+                    env.storage().persistent().set(&key, &sub);
+                    storage::clear_pause_expiry(&env, &user);
+                    events::publish_subscription_auto_resumed(&env, &user);
+                    // Charge immediately after auto-resume
+                    let token = token::Client::new(&env, &sub.token);
+                    token.transfer_from(
+                        &env.current_contract_address(),
+                        &user,
+                        &sub.merchant,
+                        &sub.amount,
+                    );
+                    merchant_stats::increment_revenue_with_daily(&env, &sub.merchant, sub.amount);
+                    sub.last_charged = now;
+                    env.storage().persistent().set(&key, &sub);
+                    extend_subscription_ttl(&env, &user);
+                    subscription_history::record_charge(&env, &user, now);
+                    events::publish_charged(&env, &user, &sub, now);
+                    return;
+                }
+            }
+        }
+
+        assert!(!sub.paused, "subscription is paused");
 
         if now < sub.last_charged + sub.interval {
             env.panic_with_error(ContractError::IntervalNotElapsed);
@@ -404,6 +438,39 @@ impl FlowPay {
 
         env.storage().persistent().set(&key, &sub);
 
+        storage::set_pause_expiry(&env, &user, u64::MAX);
+
+        env.events()
+            .publish((Symbol::new(&env, "paused"), user), ());
+    }
+
+    /// Pauses `user`'s subscription until a specific expiry timestamp.
+    /// The subscription will auto-resume via `charge` or `batch_charge`
+    /// when the ledger timestamp reaches `expiry`.
+    /// Requires authorization from `user`.
+    pub fn pause_until(env: Env, user: Address, expiry: u64) {
+        user.require_auth();
+
+        let now = env.ledger().timestamp();
+        if expiry <= now {
+            env.panic_with_error(ContractError::InvalidPauseExpiry);
+        }
+
+        let key = DataKey::Subscription(user.clone());
+
+        let mut sub: Subscription = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .expect("no subscription found");
+
+        assert!(sub.active, "subscription is not active");
+
+        sub.paused = true;
+
+        env.storage().persistent().set(&key, &sub);
+        storage::set_pause_expiry(&env, &user, expiry);
+
         env.events()
             .publish((Symbol::new(&env, "paused"), user), ());
     }
@@ -445,6 +512,7 @@ impl FlowPay {
         sub.paused = false;
 
         env.storage().persistent().set(&key, &sub);
+        storage::clear_pause_expiry(&env, &user);
 
         env.events()
             .publish((Symbol::new(&env, "resumed"), user), ());

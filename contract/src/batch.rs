@@ -1,6 +1,6 @@
 use soroban_sdk::{contracttype, Address, Env, Vec};
 
-use crate::{grace, token, DataKey, Subscription};
+use crate::{grace, storage, token, DataKey, Subscription};
 use crate::events;
 use crate::merchant_stats;
 
@@ -43,7 +43,37 @@ pub fn batch_charge(env: &Env, users: Vec<Address>) -> Vec<ChargeResult> {
                 if !sub.active {
                     ChargeResult::Inactive
                 } else if sub.paused {
-                    ChargeResult::Paused
+                    // Attempt auto-resume if past pause expiry
+                    let expiry = storage::get_pause_expiry(env, &user);
+                    if let Some(expiry_ts) = expiry {
+                        if now >= expiry_ts {
+                            sub.paused = false;
+                            if now > sub.last_charged {
+                                sub.last_charged = now;
+                            }
+                            env.storage().persistent().set(&key, &sub);
+                            storage::clear_pause_expiry(env, &user);
+                            events::publish_subscription_auto_resumed(env, &user);
+                            // Charge immediately after auto-resume
+                            let token_client = token::Client::new(env, &sub.token);
+                            token_client.transfer_from(
+                                &env.current_contract_address(),
+                                &user,
+                                &sub.merchant,
+                                &sub.amount,
+                            );
+                            merchant_stats::increment_revenue_with_daily(env, &sub.merchant, sub.amount);
+                            sub.last_charged = now;
+                            env.storage().persistent().set(&key, &sub);
+                            // extend_subscription_ttl is done inside the charge flow
+                            events::publish_charged(env, &user, &sub, now);
+                            ChargeResult::Charged
+                        } else {
+                            ChargeResult::Paused
+                        }
+                    } else {
+                        ChargeResult::Paused
+                    }
                 } else if now < sub.last_charged + sub.interval {
                     ChargeResult::Skipped
                 } else if grace_period > 0

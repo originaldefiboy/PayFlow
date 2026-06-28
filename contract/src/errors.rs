@@ -24,4 +24,6 @@ pub enum ContractError {
     GracePeriodElapsed = 9,
     /// Returned when a merchant is not whitelisted
     MerchantNotWhitelisted = 10,
+    /// Returned when pause_until expiry_timestamp is not strictly in the future
+    InvalidPauseExpiry = 11,
 }
