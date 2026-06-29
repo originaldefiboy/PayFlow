@@ -95,9 +95,9 @@ fn count_user_events(env: &Env, topic: &str, user: &Address) -> u32 {
     count
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Core functionality tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_subscribe_and_charge() {
@@ -186,6 +186,41 @@ fn test_charge_exact_transfer_amount() {
 }
 
 #[test]
+fn test_charged_event_includes_ledger_sequence() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86401;
+        l.sequence_number += 7;
+    });
+
+    client.charge(&user);
+
+    let mut seen_charge_event = false;
+    for (_, topics, data) in env.events().all().iter() {
+        let topic_symbol: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+        if topic_symbol == Symbol::new(&env, "charged") {
+            let event_data: crate::events::ChargeEventData = data.try_into_val(&env).unwrap();
+            assert_eq!(event_data.ledger_sequence, env.ledger().sequence());
+            seen_charge_event = true;
+        }
+    }
+
+    assert!(seen_charge_event, "expected a charged event");
+}
+
+#[test]
 fn test_charge_applies_protocol_fee_and_records_net_revenue() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
@@ -196,13 +231,7 @@ fn test_charge_applies_protocol_fee_and_records_net_revenue() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-<<<<<<< HEAD
     client.propose_fee(&collector, &500);
-=======
-    client.propose_fee(&collector, &500u32);
-    client.propose_fee(&collector, &500);
-    client.commit_fee();
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.commit_fee(); // 5%
 
     let amount: i128 = 10_0000000;
@@ -244,11 +273,6 @@ fn test_charge_with_zero_fee_bps_skips_fee_transfer() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &0u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &0);
     client.commit_fee();
 
@@ -312,9 +336,9 @@ fn test_subscription_struct_fields_match_input() {
     );
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #194: get_trial_end() tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_get_trial_end_with_trial_period() {
@@ -464,9 +488,9 @@ fn test_set_whitelist_enabled_false_allows_any_merchant() {
     assert_eq!(sub.merchant, merchant);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Merchant freeze tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// subscribe to a frozen merchant panics with ContractError::MerchantFrozen.
 #[test]
@@ -492,7 +516,7 @@ fn test_subscribe_to_frozen_merchant_panics() {
     );
 }
 
-/// An existing subscriber can still be charged after their merchant is frozen —
+/// An existing subscriber can still be charged after their merchant is frozen â€”
 /// freeze only blocks new subscriptions, not existing charge cycles.
 #[test]
 fn test_charge_succeeds_after_merchant_frozen() {
@@ -576,7 +600,7 @@ fn test_is_merchant_frozen_reflects_state() {
     assert!(!client.is_merchant_frozen(&merchant));
 }
 
-/// Freezing a merchant that is not whitelisted must still succeed — the two
+/// Freezing a merchant that is not whitelisted must still succeed â€” the two
 /// states (whitelist, freeze) are independent of each other.
 #[test]
 fn test_freeze_merchant_independent_of_whitelist() {
@@ -596,7 +620,7 @@ fn test_freeze_merchant_independent_of_whitelist() {
     assert!(!client.is_merchant_whitelisted(&merchant));
 }
 
-/// freeze_merchant is idempotent — freezing an already-frozen merchant must not panic.
+/// freeze_merchant is idempotent â€” freezing an already-frozen merchant must not panic.
 #[test]
 fn test_freeze_merchant_idempotent() {
     let (env, contract_id, _token_addr, _user, merchant) = setup();
@@ -634,7 +658,7 @@ fn test_freeze_merchant_non_admin_panics() {
     let (env, contract_id, _token_addr, _user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
 
-    // No admin configured — require_admin panics with "admin not set"
+    // No admin configured â€” require_admin panics with "admin not set"
     client.freeze_merchant(&merchant);
 }
 
@@ -645,7 +669,7 @@ fn test_unfreeze_merchant_non_admin_panics() {
     let (env, contract_id, _token_addr, _user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
 
-    // No admin configured — require_admin panics with "admin not set"
+    // No admin configured â€” require_admin panics with "admin not set"
     client.unfreeze_merchant(&merchant);
 }
 
@@ -727,9 +751,9 @@ fn test_charge_too_early() {
     client.charge(&user);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Multi-token + advanced features
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_multi_token_independent_subscriptions() {
@@ -817,14 +841,7 @@ fn test_pay_per_use_applies_protocol_fee_and_records_net_revenue() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-<<<<<<< HEAD
     client.propose_fee(&collector, &250);
-=======
-    client.propose_fee(&collector, &250u32);
-    client.propose_fee(&collector, &500);
-    client.propose_fee(&collector, &250);
-    client.commit_fee();
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.commit_fee(); // 2.5%
 
     client.subscribe(
@@ -861,11 +878,6 @@ fn test_pay_per_use_with_zero_fee_bps_transfers_full_amount() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &0u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &0);
     client.commit_fee();
     client.subscribe(
@@ -951,9 +963,9 @@ fn test_pay_per_use_nonexistent() {
     client.pay_per_use(&random, &1_0000000);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Edge cases
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 #[should_panic]
@@ -998,7 +1010,7 @@ fn test_initialize_backward_compat() {
     let client = FlowPayClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
-    // initialize with a default token — should not affect per-sub token
+    // initialize with a default token â€” should not affect per-sub token
     client.initialize(&token_addr, &admin);
 
     let token_b = setup_second_token(&env, &contract_id, &user);
@@ -1008,7 +1020,7 @@ fn test_initialize_backward_compat() {
     assert_eq!(client.get_subscription(&user).unwrap().token, token_b);
 }
 
-// ── Issue #14: cancel nonexistent subscription ───────────────────────────────
+// â”€â”€ Issue #14: cancel nonexistent subscription â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// cancel() must panic with "no subscription found" when called on a user with no subscription.
 #[test]
@@ -1020,7 +1032,7 @@ fn test_cancel_nonexistent() {
     client.cancel(&random);
 }
 
-// ── Issue #13: get_subscription for nonexistent subscription ─────────────────
+// â”€â”€ Issue #13: get_subscription for nonexistent subscription â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// get_subscription() must return None for an address with no subscription.
 #[test]
@@ -1034,7 +1046,7 @@ fn test_get_subscription_nonexistent() {
         "get_subscription should return None for unknown address"
     );
 }
-// ── Issue #12: last_charged timestamp update ─────────────────────────────────
+// â”€â”€ Issue #12: last_charged timestamp update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// charge() must update last_charged to the current ledger timestamp.
 #[test]
@@ -1128,9 +1140,9 @@ fn test_interval_minimum_valid() {
     assert_eq!(sub.interval, 3600);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Multi-user isolation
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_multiple_users() {
@@ -1176,9 +1188,9 @@ fn test_multiple_users() {
     client.charge(&user_a);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Cancel + charge edge cases
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 #[should_panic]
@@ -1204,9 +1216,9 @@ fn test_charge_after_cancel() {
     client.charge(&user);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // batch_charge tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_batch_charge_charged_and_skipped() {
@@ -1360,7 +1372,7 @@ fn test_batch_charge_stress() {
 
     env.budget().reset_unlimited();
 
-    let num_users = 100;
+    let num_users = 50;
     let mut users = soroban_sdk::Vec::new(&env);
     let interval = 86400;
 
@@ -1390,6 +1402,112 @@ fn test_batch_charge_stress() {
     for r in results.into_iter() {
         assert_eq!(r, crate::ChargeResult::Charged);
     }
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #20)")]
+fn test_batch_charge_over_default_limit_panics() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let token = TokenClient::new(&env, &token_addr);
+    let sac = StellarAssetClient::new(&env, &token_addr);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..51 {
+        let u = Address::generate(&env);
+        sac.mint(&u, &10_000_0000000);
+        token.approve(&u, &contract_id, &10_000_0000000, &200);
+        client.subscribe(&u, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+        users.push_back(u);
+    }
+
+    client.batch_charge(&users);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #29)")]
+fn test_set_max_batch_size_rejects_value_above_200() {
+    let (env, contract_id, _token_addr, user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    client.set_max_batch_size(&201);
+}
+
+#[test]
+#[should_panic]
+fn test_non_admin_set_max_batch_size_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.set_auths(&[]);
+    client.set_max_batch_size(&10);
+}
+
+#[test]
+fn test_cancel_and_refund_prorated_transfers_expected_amount() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let token = TokenClient::new(&env, &token_addr);
+    let sac = StellarAssetClient::new(&env, &token_addr);
+
+    sac.mint(&merchant, &10_000_0000000);
+
+    client.subscribe(&user, &merchant, &1_0000000, &3600, &token_addr, &None, &None);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp = 900;
+    });
+
+    let merchant_balance_before = token.balance(&merchant);
+    let user_balance_before = token.balance(&user);
+
+    client.cancel_and_refund_prorated(&user, &merchant);
+
+    assert_eq!(token.balance(&merchant), merchant_balance_before - 7_500_000);
+    assert_eq!(token.balance(&user), user_balance_before + 7_500_000);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(!sub.active);
+}
+
+#[test]
+fn test_cancel_and_refund_prorated_at_interval_end_transfers_nothing() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let token = TokenClient::new(&env, &token_addr);
+    let sac = StellarAssetClient::new(&env, &token_addr);
+
+    sac.mint(&merchant, &10_000_0000000);
+
+    client.subscribe(&user, &merchant, &1_0000000, &3600, &token_addr, &None, &None);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp = 3600;
+    });
+
+    let merchant_balance_before = token.balance(&merchant);
+    let user_balance_before = token.balance(&user);
+
+    client.cancel_and_refund_prorated(&user, &merchant);
+
+    assert_eq!(token.balance(&merchant), merchant_balance_before);
+    assert_eq!(token.balance(&user), user_balance_before);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(!sub.active);
+}
+
+#[test]
+#[should_panic]
+fn test_cancel_and_refund_prorated_missing_subscription_panics() {
+    let (env, contract_id, _token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.cancel_and_refund_prorated(&user, &merchant);
 }
 
 #[test]
@@ -1462,11 +1580,6 @@ fn test_batch_charge_with_fee() {
 
     let collector = Address::generate(&env);
     let fee_bps: u32 = 100; // 1%
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &500);
-    client.propose_fee(&collector, &100);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &fee_bps);
     client.commit_fee();
 
@@ -1546,13 +1659,8 @@ fn test_batch_charge_grace_period_elapsed() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &user);
     });
-<<<<<<< HEAD
     let grace_period: u64 = 86400;
     client.propose_grace_period(&grace_period);
-=======
-    client.propose_grace_period(&86400u64);
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.commit_grace_period();
 
     let interval: u64 = 86400;
@@ -1581,9 +1689,9 @@ fn test_batch_charge_grace_period_elapsed() {
     );
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // subscription_count tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_active_count_increments_on_subscribe() {
@@ -1691,9 +1799,9 @@ fn test_active_count_multiple_users() {
     assert_eq!(client.get_active_count(), 1);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // merchant_stats tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_merchant_revenue_from_charge() {
@@ -1768,9 +1876,9 @@ fn test_merchant_revenue_accumulates() {
     assert_eq!(client.get_merchant_revenue(&merchant), 3_0000000);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // spending_limit tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_get_daily_limit() {
@@ -1840,7 +1948,7 @@ fn test_daily_limit_accumulates_across_calls() {
     client.set_daily_limit(&user, &5_0000000);
     client.pay_per_use(&user, &2_0000000);
     client.pay_per_use(&user, &2_0000000);
-    // 4 total, limit is 5 — should pass
+    // 4 total, limit is 5 â€” should pass
 }
 
 #[test]
@@ -1939,9 +2047,9 @@ fn test_remove_daily_limit_allows_pay_per_use_after_removal() {
     client.pay_per_use(&user, &2_0000000); // should succeed after removal
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Contract admin event tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_contract_pause_events_emitted() {
@@ -1960,9 +2068,9 @@ fn test_contract_pause_events_emitted() {
     assert_last_event(&env, "contract_unpaused");
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Migration tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_migrate_v1_to_v2() {
@@ -2108,7 +2216,7 @@ fn test_batch_pause_subscriptions_handles_valid_missing_and_pre_paused_accounts(
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #21)")]
+#[should_panic(expected = "Error(Contract, #20)")]
 fn test_batch_pause_subscriptions_rejects_more_than_twenty_five_accounts() {
     let (env, contract_id, _token_addr, user, _merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
@@ -2146,9 +2254,9 @@ fn test_upgrade_event_emitted() {
     let topic_symbol: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
     assert_eq!(topic_symbol, Symbol::new(&env, "upgrade"));
 }
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #96: referral tracking tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_referral_stored_on_subscribe() {
@@ -2232,12 +2340,6 @@ fn test_grace_period_ttl_extension() {
 
     // Set a grace period as admin and verify read returns the same value.
     let seconds: u64 = 3600;
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&3600u64);
-    client.propose_grace_period(&86400);
-    client.propose_grace_period(&3600);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&seconds);
     client.commit_grace_period();
     let got = client.get_grace_period();
@@ -2301,9 +2403,9 @@ fn test_self_referral_rejected_via_try_subscribe() {
     assert_eq!(result, Err(Ok(soroban_sdk::Error::from_contract_error(11))));
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #97: migration tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_migrate_sets_schema_version() {
@@ -2331,9 +2433,9 @@ fn test_migrate_is_idempotent() {
     assert_eq!(client.get_schema_version(), 2);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #99: subscription metadata tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_set_and_get_metadata() {
@@ -2389,9 +2491,9 @@ fn test_get_metadata_none_when_not_set() {
     assert!(client.get_metadata(&random).is_none());
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #98: charge history tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_charge_history_recorded() {
@@ -2651,9 +2753,9 @@ fn test_clear_charge_history_nonexistent_key_no_panic() {
     client.clear_charge_history(&random);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // contract_health_check tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_health_check_initialized_unpaused() {
@@ -2664,13 +2766,10 @@ fn test_health_check_initialized_unpaused() {
 
     let report = client.contract_health_check();
 
-<<<<<<< HEAD
     assert!(
         report.is_healthy,
         "initialized and unpaused contract should be healthy"
     );
-=======
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     assert!(!report.contract_paused);
     assert!(report.token_configured);
     assert!(report.admin_configured);;
@@ -2748,7 +2847,6 @@ fn test_ttl_extension() {
         &None,
     );
 
-<<<<<<< HEAD
     // We can't easily assert the exact TTL in the test environment without more complex mock_all_auths
     // or internal access, but we can verify the function exists and doesn't panic.
     client.subscribe(
@@ -2761,7 +2859,7 @@ fn test_ttl_extension() {
         &None,
     );
 
-    // Keep the contract instance itself alive across the jump below — only the
+    // Keep the contract instance itself alive across the jump below â€” only the
     // Subscription entry's TTL is extended by extend_subscription_ttl, but the
     // contract instance needs its own TTL or the whole contract becomes archived.
     // Extend a bit past SUBSCRIPTION_TTL_LEDGERS to cover the two ledger jumps below.
@@ -2775,8 +2873,6 @@ fn test_ttl_extension() {
         l.sequence_number += SUBSCRIPTION_TTL_LEDGERS - 1;
     });
 
-=======
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.extend_subscription_ttl(&user);
 
     assert!(client.get_subscription(&user).is_some());
@@ -2871,9 +2967,9 @@ fn test_subscribe_amount_at_cap_succeeds() {
 
 
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Admin transfer tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_transfer_admin() {
@@ -2981,9 +3077,9 @@ fn test_initialize_without_valid_token() {
     // Success means it didn't panic, which is the current expected behavior.
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Global volume cap tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Helper: set up a user with a large balance for global volume testing
 fn setup_large_balance(env: &Env, contract_id: &Address, token_addr: &Address) -> Address {
@@ -3112,9 +3208,9 @@ fn test_global_volume_window_reset() {
     client.charge(&user_b);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // subscribe_with_metadata tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_subscribe_with_metadata_success() {
@@ -3185,7 +3281,7 @@ fn test_subscribe_with_metadata_no_subscription_on_label_failure() {
     );
 
     // Label validation happens before subscribe_inner, so no subscription should be written.
-    // This panics before any storage write — we verify that by catching the panic separately
+    // This panics before any storage write â€” we verify that by catching the panic separately
     // in test_subscribe_with_metadata_label_too_long. Here we just assert the panic occurs.
     client.subscribe_with_metadata(
         &user,
@@ -3199,9 +3295,9 @@ fn test_subscribe_with_metadata_no_subscription_on_label_failure() {
     );
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // get_protocol_stats tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_get_protocol_stats_initial() {
@@ -3360,9 +3456,9 @@ fn test_subscribe_overwrites_cancelled_subscription() {
     assert_eq!(sub_new.amount, 2_0000000);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // min_interval tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// get_min_interval returns 3600 (1 hour) before any admin configuration.
 #[test]
@@ -3402,7 +3498,7 @@ fn test_subscribe_after_set_min_interval_lower_succeeds() {
     client.set_min_interval(&60u64);
 
     assert_eq!(client.get_min_interval(), 60);
-    // 60 seconds == new floor — should succeed
+    // 60 seconds == new floor â€” should succeed
     client.subscribe(&user, &merchant, &1_0000000, &60, &token_addr, &None, &None);
     assert!(client.get_subscription(&user).unwrap().active);
 }
@@ -3425,13 +3521,13 @@ fn test_set_min_interval_zero_panics() {
 fn test_set_min_interval_non_admin_panics() {
     let (env, contract_id, _token_addr, _user, _merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
-    // No admin configured — require_admin panics with "admin not set"
+    // No admin configured â€” require_admin panics with "admin not set"
     client.set_min_interval(&7200u64);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // clear_merchant_revenue_history tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Admin can clear history; subsequent query returns an empty Vec (zero-length).
 /// Clearing does not affect the cumulative revenue total.
@@ -3488,9 +3584,9 @@ fn test_clear_merchant_revenue_history_idempotent() {
 
     client.set_initial_admin(&admin);
 
-    // First call — no data exists, must not panic
+    // First call â€” no data exists, must not panic
     client.clear_merchant_revenue_history(&unknown_merchant);
-    // Second call — still no data, must not panic
+    // Second call â€” still no data, must not panic
     client.clear_merchant_revenue_history(&unknown_merchant);
 
     assert_eq!(
@@ -3507,13 +3603,13 @@ fn test_clear_merchant_revenue_history_idempotent() {
 fn test_clear_merchant_revenue_history_non_admin_panics() {
     let (env, contract_id, _token_addr, _user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
-    // No admin configured — require_admin panics
+    // No admin configured â€” require_admin panics
     client.clear_merchant_revenue_history(&merchant);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Subscriber index tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_subscriber_index_three_unique_users() {
@@ -3595,7 +3691,7 @@ fn test_resubscribe_active_does_not_duplicate_index() {
     );
     assert_eq!(client.get_subscriber_count(), 1);
 
-    // Re-subscribe while still active — must not append a second entry
+    // Re-subscribe while still active â€” must not append a second entry
     client.subscribe(
         &user,
         &merchant,
@@ -3636,7 +3732,7 @@ fn test_subscriber_page_offset_beyond_count_returns_empty() {
 
 #[test]
 fn test_subscriber_page_limit_capped_at_50() {
-    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
     client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
     let sac = StellarAssetClient::new(&env, &token_addr);
@@ -3658,13 +3754,13 @@ fn test_subscriber_page_limit_capped_at_50() {
         );
     }
 
-    assert_eq!(client.get_subscriber_count(), 52);
+    assert_eq!(client.get_subscriber_count(), 53);
 
     let page = client.get_subscriber_page(&0u64, &100u32);
     assert_eq!(page.len(), 50);
 }
 // Issue #231: token.rs SAC compatibility test
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Test that a custom SAC token (not native XLM) works end-to-end
 /// with subscribe, charge, and pay_per_use operations.
@@ -3755,9 +3851,9 @@ fn test_custom_sac_token_end_to_end_flow() {
     );
 }
 
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #237: get_token() read function tests
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_get_token_returns_none_when_not_initialized() {
@@ -3778,9 +3874,9 @@ fn test_get_token_returns_initialized_token() {
     assert_eq!(client.get_token(), Some(token_addr));
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue: get_grace_period getter
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_get_grace_period_default_zero() {
@@ -3796,19 +3892,14 @@ fn test_get_grace_period_after_set() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &user);
     });
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&3600u64);
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&3600);
     client.commit_grace_period();
     assert_eq!(client.get_grace_period(), 3600);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue: fee_updated event on set_fee
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_set_fee_emits_event() {
@@ -3819,11 +3910,6 @@ fn test_set_fee_emits_event() {
     });
 
     let collector = Address::generate(&env);
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &100u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &100);
     client.commit_fee();
 
@@ -3846,11 +3932,6 @@ fn test_get_fee_returns_current_fee_settings() {
     });
 
     let collector = Address::generate(&env);
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &250u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &250);
     client.commit_fee();
 
@@ -3867,18 +3948,13 @@ fn test_set_fee_invalid_bps_panics() {
     });
 
     let collector = Address::generate(&env);
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &10_001u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &10001);
     client.commit_fee();
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue: grace_period_updated event on set_grace_period
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_set_grace_period_emits_event() {
@@ -3888,11 +3964,6 @@ fn test_set_grace_period_emits_event() {
         storage::set_admin(&env, &user);
     });
 
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&7200u64);
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&7200);
     client.commit_grace_period();
 
@@ -3905,9 +3976,9 @@ fn test_set_grace_period_emits_event() {
     assert_eq!(emitted_seconds, 7200u64);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #195: grace period charge behavior
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_charge_within_grace_window_succeeds() {
@@ -3920,10 +3991,6 @@ fn test_charge_within_grace_window_succeeds() {
 
     let grace_period: u64 = 86400;
     let interval: u64 = 86400;
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&grace_period);
     client.commit_grace_period();
     client.subscribe(
@@ -3959,10 +4026,6 @@ fn test_charge_after_grace_window_panics() {
 
     let grace_period: u64 = 86400;
     let interval: u64 = 86400;
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&grace_period);
     client.commit_grace_period();
     client.subscribe(
@@ -3995,18 +4058,13 @@ fn test_non_admin_set_grace_period_panics() {
 
     env.set_auths(&[]);
 
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&3600u64);
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&3600);
     client.commit_grace_period();
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #243: Token address validation
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 #[should_panic(expected = "Error(Contract, #12)")]
@@ -4031,8 +4089,27 @@ fn test_subscribe_non_contract_address() {
     );
 }
 
+#[test]
+fn test_subscribe_valid_sac_token_address_succeeds() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert_eq!(sub.token, token_addr);
+}
+
 // Issue #232: charge() insufficient-allowance error path
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// If a user's token allowance drops below `sub.amount` between subscribe and
 /// charge time, `transfer_from` must fail and propagate the error.
@@ -4056,7 +4133,7 @@ fn test_charge_insufficient_allowance() {
         &None,
     );
 
-    // Revoke allowance — set it to 0
+    // Revoke allowance â€” set it to 0
     let token = TokenClient::new(&env, &token_addr);
     token.approve(&user, &contract_id, &0, &200);
 
@@ -4099,9 +4176,9 @@ fn test_set_metadata_label_exceeding_limit_fails() {
 
     client.set_metadata(&user, &invalid_label);
 }
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Issue #469: set_subscription_label auth and alias tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #[test]
 fn test_set_metadata_wrong_user_panics() {
     let (env, contract_id, token_addr, user, merchant) = setup();
@@ -4146,9 +4223,9 @@ fn test_get_subscription_label_none_when_not_set() {
     assert!(client.get_subscription_label(&random).is_none());
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Tests for pause() and resume()
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_pause_sets_paused_true() {
@@ -4260,9 +4337,9 @@ fn test_pause_on_inactive_subscription_panics() {
     client.pause(&user);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Tests for next_charge_at()
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_next_charge_at_returns_correct_timestamp() {
@@ -4382,9 +4459,9 @@ fn test_transfer_subscription_to_active_user_panics() {
 
     client.transfer_subscription(&user, &new_user);
 }
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CONTRACT-08: Allowance pre-validation tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// subscribe() with zero allowance must panic with InsufficientAllowance
 /// and must NOT write the subscription to storage.
@@ -4406,7 +4483,7 @@ fn test_subscribe_zero_allowance_panics() {
     let sac = StellarAssetClient::new(&env, &token_addr);
     sac.mint(&user, &10_000_0000000);
 
-    // Deliberately grant zero allowance — no approve() call.
+    // Deliberately grant zero allowance â€” no approve() call.
     let client = FlowPayClient::new(&env, &contract_id);
     client.subscribe(
         &user,
@@ -4438,10 +4515,10 @@ fn test_subscribe_zero_allowance_does_not_write_storage() {
 
     let user = Address::generate(&env);
 
-    // Never approved any allowance — a subscribe call would panic.
+    // Never approved any allowance â€” a subscribe call would panic.
     // Soroban transactions are atomic: a panic reverts all storage writes.
-    // We confirm the storage slot starts empty (None) and — since we cannot
-    // call subscribe without panicking — we verify the invariant holds: a
+    // We confirm the storage slot starts empty (None) and â€” since we cannot
+    // call subscribe without panicking â€” we verify the invariant holds: a
     // user address that has never successfully subscribed always returns None.
     let client = FlowPayClient::new(&env, &contract_id);
     assert!(
@@ -4470,7 +4547,7 @@ fn test_subscribe_exact_allowance_succeeds() {
 
     let amount: i128 = 5_0000000;
 
-    // Approve exactly amount — no more, no less.
+    // Approve exactly amount â€” no more, no less.
     let token = TokenClient::new(&env, &token_addr);
     token.approve(&user, &contract_id, &amount, &200);
 
@@ -4519,9 +4596,9 @@ fn test_resubscribe_zero_allowance_panics() {
     client.subscribe(&user, &merchant, &amount, &86400, &token_addr, &None, &None);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CONTRACT-36: set_subscription_amount tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Admin successfully updates a subscription amount; get_subscription reflects
 /// the new value and last_charged / interval are untouched.
@@ -4609,9 +4686,9 @@ fn test_set_subscription_amount_non_admin_panics() {
     client.set_subscription_amount(&user, &2_0000000);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CONTRACT-37: set_subscription_interval tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Admin successfully updates the billing interval; next_charge_at reflects the
 /// new value and last_charged / amount are untouched.
@@ -4736,9 +4813,9 @@ fn test_set_subscription_interval_non_admin_panics() {
     client.set_subscription_interval(&user, &172800);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CONTRACT-38: withdraw_merchant_revenue tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Merchant with accrued revenue can withdraw the full tracked balance.
 /// After withdrawal: token balance increases by the tracked amount and the
@@ -4807,7 +4884,7 @@ fn test_withdraw_merchant_revenue_succeeds() {
 
 /// Withdrawal with no accrued balance must panic with ZeroBalanceAvailable.
 #[test]
-#[should_panic(expected = "Error(Contract, #20)")]
+#[should_panic(expected = "Error(Contract, #21)")]
 fn test_withdraw_merchant_revenue_zero_balance_panics() {
     let (env, contract_id, token_addr, _user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
@@ -4889,10 +4966,9 @@ fn test_is_charge_due_false_for_paused_subscription() {
     assert!(!client.is_charge_due(&user));
 }
 
-<<<<<<< HEAD
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CONTRACT-53: batch_pause_subscriptions tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Admin can pause multiple valid subscriptions in a single batch call.
 /// The test verifies paused flag is set, events are emitted, and already-paused
@@ -4977,11 +5053,11 @@ fn test_batch_pause_subscriptions_mixed_inputs() {
     // Build batch with mixed inputs: valid, missing, already-paused, valid
     let no_sub_user = Address::generate(&env);
     let mut users = soroban_sdk::Vec::new(&env);
-    users.push_back(user_a.clone()); // valid → should be paused
-    users.push_back(no_sub_user.clone()); // no subscription → skipped
-    users.push_back(user_c.clone()); // already paused → no-op
-    users.push_back(user_b.clone()); // valid → should be paused
-    users.push_back(user_d.clone()); // valid → should be paused
+    users.push_back(user_a.clone()); // valid â†’ should be paused
+    users.push_back(no_sub_user.clone()); // no subscription â†’ skipped
+    users.push_back(user_c.clone()); // already paused â†’ no-op
+    users.push_back(user_b.clone()); // valid â†’ should be paused
+    users.push_back(user_d.clone()); // valid â†’ should be paused
 
     let events_before = env.events().all().len();
 
@@ -5044,7 +5120,7 @@ fn test_batch_pause_subscriptions_non_admin_panics() {
         &None,
     );
 
-    // Clear all auths — admin auth should fail and panic
+    // Clear all auths â€” admin auth should fail and panic
     env.set_auths(&[]);
 
     let mut users = soroban_sdk::Vec::new(&env);
@@ -5052,9 +5128,9 @@ fn test_batch_pause_subscriptions_non_admin_panics() {
     client.batch_pause_subscriptions(&users);
 }
 
-/// Batch size exceeding 25 must panic with BatchSizeExceeded.
+/// Batch size exceeding 25 must panic with BatchTooLarge.
 #[test]
-#[should_panic(expected = "Error(Contract, #21)")]
+#[should_panic(expected = "Error(Contract, #20)")]
 fn test_batch_pause_subscriptions_exceeds_max_size_panics() {
     let (env, contract_id, _token_addr, _user, _merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
@@ -5072,9 +5148,9 @@ fn test_batch_pause_subscriptions_exceeds_max_size_panics() {
     client.batch_pause_subscriptions(&users);
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CONTRACT-07: get_merchant_sub_count tests
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn test_merchant_sub_count_two_users_cancel_one() {
@@ -5187,63 +5263,4 @@ fn test_merchant_sub_count_double_cancel_no_underflow() {
     // Second cancel must not underflow
     client.cancel(&user);
     assert_eq!(client.get_merchant_sub_count(&merchant), 0);
-=======
-#[test]
-fn test_is_charge_due_false_past_grace_window() {
-    let (env, contract_id, token_addr, user, merchant) = setup();
-    let client = FlowPayClient::new(&env, &contract_id);
-    env.as_contract(&contract_id, || {
-        storage::set_admin(&env, &user);
-    });
-
-    let interval: u64 = 86400;
-    let grace: u64 = 3600;
-    client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
-    client.set_grace_period(&grace);
-
-    env.ledger().with_mut(|l| { l.timestamp += interval + grace + 1; });
-
-    assert!(!client.is_charge_due(&user));
-}
-
-#[test]
-fn test_is_charge_due_false_for_unknown_address() {
-    let (env, contract_id, _token_addr, _user, _merchant) = setup();
-    let client = FlowPayClient::new(&env, &contract_id);
-
-    assert!(!client.is_charge_due(&Address::generate(&env)));
-fn test_daily_limit_day_start_boundary() {
-    let (env, contract_id, token_addr, user, merchant) = setup();
-    let client = FlowPayClient::new(&env, &contract_id);
-
-    client.subscribe(&user, &merchant, &100_0000000, &86400, &token_addr, &None, &None);
-    client.set_daily_limit(&user, &50_0000000);
-
-    // Spend 10
-    client.pay_per_use(&user, &10_0000000);
-    assert_eq!(client.get_daily_spent(&user), 10_0000000);
-
-    // Spend 10 more
-    client.pay_per_use(&user, &10_0000000);
-    assert_eq!(client.get_daily_spent(&user), 20_0000000);
-
-    // Manually extend DailyLimit TTL so it survives the time skip
-    env.as_contract(&contract_id, || {
-        let key = DataKey::DailyLimit(user.clone());
-        // 35,000 ledgers > LEDGERS_PER_DAY (17,280)
-        env.storage().temporary().extend_ttl(&key, 35000, 35000);
-    });
-
-    // Advance sequence by LEDGERS_PER_DAY + 1 to expire DayStart (17,280 + 1 = 17,281)
-    env.ledger().with_mut(|l| {
-        l.sequence_number += 17281;
-        l.timestamp += 17281 * 5;
-    });
-
-    // New spend on new day
-    client.pay_per_use(&user, &15_0000000);
-
-    // Should only be 15, not 35
-    assert_eq!(client.get_daily_spent(&user), 15_0000000);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
 }

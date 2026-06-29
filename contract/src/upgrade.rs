@@ -1,7 +1,5 @@
 use soroban_sdk::{BytesN, Env};
 
-<<<<<<< HEAD
-=======
 use crate::{admin, errors::ContractError, events, DataKey};
 
 pub fn propose_upgrade(env: &Env, new_wasm_hash: BytesN<32>) {
@@ -20,8 +18,6 @@ pub fn commit_upgrade(env: &Env) {
         .unwrap_or_else(|| env.panic_with_error(ContractError::NoPendingProposal));
 
     env.storage().temporary().remove(&DataKey::PendingUpgrade);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
-use crate::events;
 
     #[cfg(not(test))]
     env.deployer()
