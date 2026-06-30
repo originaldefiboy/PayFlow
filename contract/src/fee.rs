@@ -82,7 +82,9 @@ pub fn transfer_subscription_charge(env: &Env, user: &Address, sub: &Subscriptio
     let net = sub.amount - fee_amount;
 
     let token_client = token::Client::new(env, &sub.token);
-    token_client.transfer_from(&env.current_contract_address(), user, &sub.merchant, &net);
+    // Route net revenue to merchant-configured recipient (fallback to merchant)
+    let merchant_dest = crate::get_merchant_fee_recipient(env.clone(), sub.merchant.clone());
+    token_client.transfer_from(&env.current_contract_address(), user, &merchant_dest, &net);
 
     fee_amount
 }

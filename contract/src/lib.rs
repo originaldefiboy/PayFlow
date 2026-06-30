@@ -89,6 +89,8 @@ pub enum DataKey {
     PendingAdmin,
     // Two-step auth for protocol fee
     PendingFee,
+    // Per-merchant custom fee recipient (merchant -> destination)
+    MerchantFeeRecipient(Address),
     // Two-step auth for grace period
     PendingGracePeriod,
     // Two-step auth for upgrade
@@ -1018,6 +1020,34 @@ impl FlowPay {
     /// Returns whether a merchant is whitelisted.
     pub fn is_merchant_whitelisted(env: Env, merchant: Address) -> bool {
         whitelist::is_whitelisted(&env, &merchant)
+    }
+
+    /// Sets a custom fee recipient for a merchant. The caller must be the merchant.
+    /// The recipient cannot be the contract address and contract must not be paused.
+    pub fn set_merchant_fee_recipient(env: Env, merchant: Address, recipient: Address) {
+        ensure_contract_not_paused(&env);
+        merchant.require_auth();
+
+        if recipient == env.current_contract_address() {
+            env.panic_with_error(ContractError::InvalidRecipient);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::MerchantFeeRecipient(merchant.clone()), &recipient);
+        env.storage().persistent().extend_ttl(
+            &DataKey::MerchantFeeRecipient(merchant.clone()),
+            SUBSCRIPTION_TTL_LEDGERS,
+            SUBSCRIPTION_TTL_LEDGERS,
+        );
+    }
+
+    /// Returns the configured merchant fee recipient, or the merchant address when unset.
+    pub fn get_merchant_fee_recipient(env: Env, merchant: Address) -> Address {
+        env.storage()
+            .persistent()
+            .get(&DataKey::MerchantFeeRecipient(merchant.clone()))
+            .unwrap_or(merchant)
     }
 
     /// Freezes a merchant, blocking new subscriptions while leaving existing
