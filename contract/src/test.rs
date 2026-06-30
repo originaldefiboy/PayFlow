@@ -228,6 +228,66 @@ fn test_charge_applies_protocol_fee_and_records_net_revenue() {
 }
 
 #[test]
+fn test_charge_routes_net_to_custom_recipient() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let token = TokenClient::new(&env, &token_addr);
+    let admin = Address::generate(&env);
+    let collector = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+    client.propose_fee(&collector, &500);
+    client.commit_fee(); // 5%
+
+    // merchant sets a custom recipient (directly write persistent storage for test)
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::MerchantFeeRecipient(merchant.clone()), &recipient);
+        env.storage().persistent().extend_ttl(
+            &DataKey::MerchantFeeRecipient(merchant.clone()),
+            SUBSCRIPTION_TTL_LEDGERS,
+            SUBSCRIPTION_TTL_LEDGERS,
+        );
+    });
+
+    let amount: i128 = 10_0000000;
+    let expected_fee: i128 = 500_0000;
+    let expected_net: i128 = amount - expected_fee;
+    let interval: u64 = 86400;
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &amount,
+        &interval,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    let recipient_before = token.balance(&recipient);
+    let merchant_before = token.balance(&merchant);
+    let collector_before = token.balance(&collector);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + 1;
+    });
+    client.charge(&user);
+
+    assert_eq!(token.balance(&recipient) - recipient_before, expected_net);
+    assert_eq!(token.balance(&merchant) - merchant_before, 0);
+    assert_eq!(token.balance(&collector) - collector_before, expected_fee);
+}
+
+// Note: setter input validation is covered in contract code; invoking it directly
+// via the generated client isn't available in these tests. The storage-level
+// behavior for routing is covered by the tests above.
+
+#[test]
 fn test_charge_with_zero_fee_bps_skips_fee_transfer() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
