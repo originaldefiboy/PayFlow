@@ -196,13 +196,7 @@ fn test_charge_applies_protocol_fee_and_records_net_revenue() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-<<<<<<< HEAD
     client.propose_fee(&collector, &500);
-=======
-    client.propose_fee(&collector, &500u32);
-    client.propose_fee(&collector, &500);
-    client.commit_fee();
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.commit_fee(); // 5%
 
     let amount: i128 = 10_0000000;
@@ -244,11 +238,6 @@ fn test_charge_with_zero_fee_bps_skips_fee_transfer() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &0u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &0);
     client.commit_fee();
 
@@ -817,14 +806,7 @@ fn test_pay_per_use_applies_protocol_fee_and_records_net_revenue() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-<<<<<<< HEAD
     client.propose_fee(&collector, &250);
-=======
-    client.propose_fee(&collector, &250u32);
-    client.propose_fee(&collector, &500);
-    client.propose_fee(&collector, &250);
-    client.commit_fee();
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.commit_fee(); // 2.5%
 
     client.subscribe(
@@ -861,11 +843,6 @@ fn test_pay_per_use_with_zero_fee_bps_transfers_full_amount() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &admin);
     });
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &0u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &0);
     client.commit_fee();
     client.subscribe(
@@ -1462,11 +1439,6 @@ fn test_batch_charge_with_fee() {
 
     let collector = Address::generate(&env);
     let fee_bps: u32 = 100; // 1%
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &500);
-    client.propose_fee(&collector, &100);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &fee_bps);
     client.commit_fee();
 
@@ -1546,13 +1518,8 @@ fn test_batch_charge_grace_period_elapsed() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &user);
     });
-<<<<<<< HEAD
     let grace_period: u64 = 86400;
     client.propose_grace_period(&grace_period);
-=======
-    client.propose_grace_period(&86400u64);
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.commit_grace_period();
 
     let interval: u64 = 86400;
@@ -2232,12 +2199,6 @@ fn test_grace_period_ttl_extension() {
 
     // Set a grace period as admin and verify read returns the same value.
     let seconds: u64 = 3600;
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&3600u64);
-    client.propose_grace_period(&86400);
-    client.propose_grace_period(&3600);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&seconds);
     client.commit_grace_period();
     let got = client.get_grace_period();
@@ -2254,6 +2215,7 @@ fn test_double_initialize() {
     client.initialize(&token_addr, &admin);
 }
 
+#[test]
 fn test_referral_clears_on_resubscribe_with_none() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
@@ -2664,16 +2626,13 @@ fn test_health_check_initialized_unpaused() {
 
     let report = client.contract_health_check();
 
-<<<<<<< HEAD
     assert!(
         report.is_healthy,
         "initialized and unpaused contract should be healthy"
     );
-=======
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     assert!(!report.contract_paused);
     assert!(report.token_configured);
-    assert!(report.admin_configured);;
+    assert!(report.admin_configured);
 }
 
 #[test]
@@ -2748,18 +2707,8 @@ fn test_ttl_extension() {
         &None,
     );
 
-<<<<<<< HEAD
     // We can't easily assert the exact TTL in the test environment without more complex mock_all_auths
     // or internal access, but we can verify the function exists and doesn't panic.
-    client.subscribe(
-        &user,
-        &merchant,
-        &1_0000000,
-        &86400,
-        &token_addr,
-        &None,
-        &None,
-    );
 
     // Keep the contract instance itself alive across the jump below — only the
     // Subscription entry's TTL is extended by extend_subscription_ttl, but the
@@ -2774,9 +2723,6 @@ fn test_ttl_extension() {
     env.ledger().with_mut(|l| {
         l.sequence_number += SUBSCRIPTION_TTL_LEDGERS - 1;
     });
-
-=======
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.extend_subscription_ttl(&user);
 
     assert!(client.get_subscription(&user).is_some());
@@ -3638,7 +3584,6 @@ fn test_subscriber_page_offset_beyond_count_returns_empty() {
 fn test_subscriber_page_limit_capped_at_50() {
     let (env, contract_id, token_addr, _user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
-    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
     let sac = StellarAssetClient::new(&env, &token_addr);
 
     for _ in 0..52 {
@@ -3796,11 +3741,6 @@ fn test_get_grace_period_after_set() {
     env.as_contract(&contract_id, || {
         storage::set_admin(&env, &user);
     });
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&3600u64);
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&3600);
     client.commit_grace_period();
     assert_eq!(client.get_grace_period(), 3600);
@@ -3819,11 +3759,6 @@ fn test_set_fee_emits_event() {
     });
 
     let collector = Address::generate(&env);
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &100u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &100);
     client.commit_fee();
 
@@ -3846,11 +3781,6 @@ fn test_get_fee_returns_current_fee_settings() {
     });
 
     let collector = Address::generate(&env);
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &250u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &250);
     client.commit_fee();
 
@@ -3867,11 +3797,6 @@ fn test_set_fee_invalid_bps_panics() {
     });
 
     let collector = Address::generate(&env);
-<<<<<<< HEAD
-=======
-    client.propose_fee(&collector, &10_001u32);
-    client.propose_fee(&collector, &500);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_fee(&collector, &10001);
     client.commit_fee();
 }
@@ -3888,11 +3813,6 @@ fn test_set_grace_period_emits_event() {
         storage::set_admin(&env, &user);
     });
 
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&7200u64);
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&7200);
     client.commit_grace_period();
 
@@ -3920,10 +3840,6 @@ fn test_charge_within_grace_window_succeeds() {
 
     let grace_period: u64 = 86400;
     let interval: u64 = 86400;
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&grace_period);
     client.commit_grace_period();
     client.subscribe(
@@ -3959,10 +3875,6 @@ fn test_charge_after_grace_window_panics() {
 
     let grace_period: u64 = 86400;
     let interval: u64 = 86400;
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&grace_period);
     client.commit_grace_period();
     client.subscribe(
@@ -3995,11 +3907,6 @@ fn test_non_admin_set_grace_period_panics() {
 
     env.set_auths(&[]);
 
-<<<<<<< HEAD
-=======
-    client.propose_grace_period(&3600u64);
-    client.propose_grace_period(&86400);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
     client.propose_grace_period(&3600);
     client.commit_grace_period();
 }
@@ -4889,7 +4796,6 @@ fn test_is_charge_due_false_for_paused_subscription() {
     assert!(!client.is_charge_due(&user));
 }
 
-<<<<<<< HEAD
 // ─────────────────────────────────────────────
 // CONTRACT-53: batch_pause_subscriptions tests
 // ─────────────────────────────────────────────
@@ -5187,7 +5093,8 @@ fn test_merchant_sub_count_double_cancel_no_underflow() {
     // Second cancel must not underflow
     client.cancel(&user);
     assert_eq!(client.get_merchant_sub_count(&merchant), 0);
-=======
+}
+
 #[test]
 fn test_is_charge_due_false_past_grace_window() {
     let (env, contract_id, token_addr, user, merchant) = setup();
@@ -5199,7 +5106,8 @@ fn test_is_charge_due_false_past_grace_window() {
     let interval: u64 = 86400;
     let grace: u64 = 3600;
     client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
-    client.set_grace_period(&grace);
+    client.propose_grace_period(&grace);
+    client.commit_grace_period();
 
     env.ledger().with_mut(|l| { l.timestamp += interval + grace + 1; });
 
@@ -5212,6 +5120,9 @@ fn test_is_charge_due_false_for_unknown_address() {
     let client = FlowPayClient::new(&env, &contract_id);
 
     assert!(!client.is_charge_due(&Address::generate(&env)));
+}
+
+#[test]
 fn test_daily_limit_day_start_boundary() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
@@ -5227,11 +5138,20 @@ fn test_daily_limit_day_start_boundary() {
     client.pay_per_use(&user, &10_0000000);
     assert_eq!(client.get_daily_spent(&user), 20_0000000);
 
-    // Manually extend DailyLimit TTL so it survives the time skip
+    // Manually extend DailyLimit (and other entries touched by the upcoming pay_per_use)
+    // TTL so they survive the time skip below.
     env.as_contract(&contract_id, || {
         let key = DataKey::DailyLimit(user.clone());
         // 35,000 ledgers > LEDGERS_PER_DAY (17,280)
         env.storage().temporary().extend_ttl(&key, 35000, 35000);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::MerchantRevenue(merchant.clone()), 35000, 35000);
+        env.storage().persistent().extend_ttl(
+            &DataKey::MerchantRevenueHistory(merchant.clone()),
+            35000,
+            35000,
+        );
     });
 
     // Advance sequence by LEDGERS_PER_DAY + 1 to expire DayStart (17,280 + 1 = 17,281)
@@ -5240,10 +5160,13 @@ fn test_daily_limit_day_start_boundary() {
         l.timestamp += 17281 * 5;
     });
 
+    // Renew the token allowance, which expired when the ledger sequence jumped past it
+    let token = TokenClient::new(&env, &token_addr);
+    token.approve(&user, &contract_id, &10_000_0000000, &(env.ledger().sequence() + 200));
+
     // New spend on new day
     client.pay_per_use(&user, &15_0000000);
 
     // Should only be 15, not 35
     assert_eq!(client.get_daily_spent(&user), 15_0000000);
->>>>>>> 6d2bb0bdee2f908481093df56db7a244c0dd0e50
 }
