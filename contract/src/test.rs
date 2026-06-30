@@ -655,6 +655,138 @@ fn test_non_admin_add_and_remove_merchant_panics() {
     client.remove_merchant(&merchant);
 }
 
+// ─────────────────────────────────────────────
+// CONTRACT-20: whitelist_batch_add / whitelist_batch_remove tests
+// ─────────────────────────────────────────────
+
+#[test]
+fn test_whitelist_batch_add_three_merchants() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    let m3 = Address::generate(&env);
+    let mut merchants = soroban_sdk::Vec::new(&env);
+    merchants.push_back(m1.clone());
+    merchants.push_back(m2.clone());
+    merchants.push_back(m3.clone());
+
+    let count = client.whitelist_batch_add(&merchants);
+
+    assert_eq!(count, 3);
+    assert!(client.is_merchant_whitelisted(&m1));
+    assert!(client.is_merchant_whitelisted(&m2));
+    assert!(client.is_merchant_whitelisted(&m3));
+}
+
+#[test]
+fn test_whitelist_batch_remove_two_merchants() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    client.add_merchant(&m1);
+    client.add_merchant(&m2);
+
+    let mut merchants = soroban_sdk::Vec::new(&env);
+    merchants.push_back(m1.clone());
+    merchants.push_back(m2.clone());
+
+    let count = client.whitelist_batch_remove(&merchants);
+
+    assert_eq!(count, 2);
+    assert!(!client.is_merchant_whitelisted(&m1));
+    assert!(!client.is_merchant_whitelisted(&m2));
+}
+
+#[test]
+fn test_whitelist_batch_add_duplicates_does_not_panic() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let m1 = Address::generate(&env);
+    let mut merchants = soroban_sdk::Vec::new(&env);
+    merchants.push_back(m1.clone());
+    merchants.push_back(m1.clone());
+
+    let count = client.whitelist_batch_add(&merchants);
+
+    assert_eq!(count, 2);
+    assert!(client.is_merchant_whitelisted(&m1));
+}
+
+#[test]
+fn test_whitelist_batch_remove_non_whitelisted_is_noop() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let m1 = Address::generate(&env);
+    let mut merchants = soroban_sdk::Vec::new(&env);
+    merchants.push_back(m1.clone());
+
+    let count = client.whitelist_batch_remove(&merchants);
+
+    assert_eq!(count, 1);
+    assert!(!client.is_merchant_whitelisted(&m1));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #31)")]
+fn test_whitelist_batch_add_exceeds_max_size_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let mut merchants = soroban_sdk::Vec::new(&env);
+    for _ in 0..51 {
+        merchants.push_back(Address::generate(&env));
+    }
+    client.whitelist_batch_add(&merchants);
+}
+
+#[test]
+#[should_panic]
+fn test_whitelist_batch_add_non_admin_panics() {
+    let (env, contract_id, _token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+    env.set_auths(&[]);
+
+    let mut merchants = soroban_sdk::Vec::new(&env);
+    merchants.push_back(merchant.clone());
+    client.whitelist_batch_add(&merchants);
+}
+
 #[test]
 fn test_cancel() {
     let (env, contract_id, token_addr, user, merchant) = setup();
